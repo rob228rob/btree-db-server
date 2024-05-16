@@ -9,6 +9,8 @@
 
 class user_data
 {
+private:
+
     size_t _id;
 
     std::string _name;

@@ -9,8 +9,11 @@
 #include "../../common/include/storage_interface.h"
 #include "../../schema/include/schema.h"
 
-class schemas_pool : public storage_interface<std::string, schema>
+class schemas_pool :
+    public storage_interface<std::string, schema>
 {
+    friend class data_base;
+
 private:
     static std::function<int(const std::string &, const std::string &)> _default_string_comparer;
 
@@ -38,9 +41,13 @@ public:
 
     void insert(const std::string &key, schema &&value) override;
 
-    const schema &obtain(const std::string &key) override;
+    schema &obtain(const std::string &key) override;
 
-    std::vector<typename associative_container<std::string, schema>::key_value_pair> obtain_between(std::string const &lower_bound, std::string const &upper_bound, bool lower_bound_inclusive, bool upper_bound_inclusive) override;
+    void update(const std::string &key, schema &&value) override;
+
+    void update(const std::string &key, const schema &value) override;
+
+    std::map<std::string, schema> obtain_between(std::string const &lower_bound, std::string const &upper_bound, bool lower_bound_inclusive, bool upper_bound_inclusive) override;
 
     void dispose(const std::string &key) override;
 

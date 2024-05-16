@@ -16,8 +16,9 @@
 
 class schema :
     public storage_interface<std::string, table>
-//TODO: inheritance the logger_guardant and allocator_guardant
 {
+    friend class data_base;
+
 private:
 
     //TODO: add incrementing logic
@@ -37,7 +38,7 @@ public:
 		   allocator* allocator = nullptr,
 		   logger* logger = nullptr,
 		   const std::function<int(const std::string&, const std::string&)>& keys_comparer = _default_string_comparer,
-		    data_storage_strategy storaged_strategy = data_storage_strategy::in_memory_storaged);
+		    storage_strategy storaged_strategy = storage_strategy::in_memory);
 
 public:
 
@@ -59,9 +60,13 @@ public:
 
     void insert(const std::string &key, table &&value) override;
 
-    const table &obtain(const std::string &key) override;
+    table &obtain(const std::string &key) override;
 
-    std::vector<typename associative_container<std::string, table>::key_value_pair> obtain_between(std::string const &lower_bound, std::string const &upper_bound, bool lower_bound_inclusive, bool upper_bound_inclusive) override;
+    void update(const std::string &key, const table &value) override;
+
+    void update(const std::string &key, table &&value) override;
+
+    std::map<std::string, table> obtain_between(std::string const &lower_bound, std::string const &upper_bound, bool lower_bound_inclusive, bool upper_bound_inclusive) override;
 
     void dispose(const std::string &key) override;
 

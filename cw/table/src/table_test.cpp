@@ -124,8 +124,25 @@ int main()
 
     std::cout << "key was FOUND!!!!!!" << fnd->get_id() << " " << fnd->get_surname() << " " << fnd->get_name() << std::endl;
 
-    //tbl->print_table();
+
 
     delete tbl;
+
+
+    auto tb = table();
+
+    tb.insert("10", user_data(10, "name", "surname"));
+    tb.insert("12", user_data(10, "name", "surname"));
+    tb.insert("15", user_data(10, "name", "surname"));
+    tb.print_table();
+    try {
+	tb.update("15", user_data(15, "asdfg", "ssssssssssssssssssssss"));
+    }
+    catch (std::exception const &e)
+    {
+	std::cout << "puc puc: " << e.what() << std::endl;
+    }
+
+    tb.print_table();
 
 }

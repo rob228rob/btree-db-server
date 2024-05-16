@@ -8,15 +8,16 @@
 #include <functional>
 #include <sstream>
 
-std::function<int(const std::string &, const std::string &)> table::_default_string_comparer = [](const std::string &a, const std::string &b) -> int { return a.compare(b); };
 
-schema::schema() : _data(std::make_unique<b_tree<std::string, table>>(4, _default_string_comparer, nullptr, nullptr))
+std::function<int(const std::string &, const std::string &)> schema::_default_string_comparer = [](const std::string &a, const std::string &b) -> int { return a.compare(b); };
+
+schema::schema() : _data(std::make_unique<b_tree<std::string, table>>(4,_default_string_comparer, nullptr, nullptr))
 {
-    this->_storaged_strategy = storage_interface<std::string, table>::data_storage_strategy::in_memory_storaged;
-
+    this->_storaged_strategy = storage_interface<std::string, table>::storage_strategy::in_memory;
+    this->_logger = nullptr;
     _storage_filename = "C:\\Users\\rob22\\CLionProjects\\cw_os\\cw\\table.txt";
 
-    if (this->_storaged_strategy == storage_interface<std::string, table>::data_storage_strategy::filesystem_storaged)
+    if (this->_storaged_strategy == storage_interface<std::string, table>::storage_strategy::filesystem)
     {
 	deserialize();
     }
@@ -27,15 +28,15 @@ schema::schema(
 	allocator *allocator,
 	logger *logger,
 	const std::function<int(const std::string &, const std::string &)> &keys_comparer,
-	data_storage_strategy storage_strategy)
+	storage_strategy storage_strategy)
     : _data(std::make_unique<b_tree<std::string, table>>(t, keys_comparer, allocator, logger))
 {
     //TODO: add TableID and generate filename with uid
     _storage_filename = "C:\\Users\\rob22\\CLionProjects\\cw_os\\cw\\schema.txt";
-
+    this->_logger = nullptr;
     set_strategy(storage_strategy);
 
-    if (this->_storaged_strategy == storage_interface<std::string, table>::data_storage_strategy::filesystem_storaged)
+    if (this->_storaged_strategy == storage_interface<std::string, table>::storage_strategy::filesystem)
     {
 	schema::deserialize();
     }
@@ -44,7 +45,7 @@ schema::schema(
 schema::~schema()
 {
 
-    if (this->_storaged_strategy == storage_interface<std::string, table>::data_storage_strategy::filesystem_storaged)
+    if (this->_storaged_strategy == storage_interface<std::string, table>::storage_strategy::filesystem)
     {
 	schema::serialize();
     }
@@ -119,7 +120,7 @@ void schema::insert(const std::string &key, table &&value)
     }
 }
 
-const table &schema::obtain(const std::string &key)
+table &schema::obtain(const std::string &key)
 {
     try
     {
@@ -132,13 +133,31 @@ const table &schema::obtain(const std::string &key)
     }
 }
 
-std::vector<typename associative_container<std::string, table>::key_value_pair> schema::obtain_between(
+std::map<std::string, table> schema::obtain_between(
 	const std::string &lower_bound,
 	const std::string &upper_bound,
 	bool lower_bound_inclusive,
 	bool upper_bound_inclusive)
 {
-    return _data->obtain_between(lower_bound, upper_bound, lower_bound_inclusive, upper_bound_inclusive);
+    auto vec = _data->obtain_between(lower_bound, upper_bound, lower_bound_inclusive, upper_bound_inclusive);
+    std::map<std::string, table> result_map;
+
+    for (auto &item: vec)
+    {
+	result_map.emplace(item.key, item.value);
+    }
+
+    return result_map;
+}
+
+void schema::update(const std::string &key, const table &value)
+{
+    _data->update(key, value);
+}
+
+void schema::update(const std::string &key, table &&value)
+{
+    _data->update(key, value);
 }
 
 void schema::dispose(const std::string &key)
@@ -248,3 +267,4 @@ void schema::save_schema_to_filesystem(const std::string &filename)
 
     output_file.close();
 }
+

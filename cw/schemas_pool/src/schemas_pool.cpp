@@ -5,12 +5,13 @@
 #include "../include/schemas_pool.h"
 #include <fstream>
 
-std::function<int(const std::string &, const std::string &)> table::_default_string_comparer = [](const std::string &a, const std::string &b) -> int { return a.compare(b); };
+std::function<int(const std::string &, const std::string &)> schemas_pool::_default_string_comparer = [](const std::string &a, const std::string &b) -> int { return a.compare(b); };
 
 
 schemas_pool::schemas_pool() : _data(std::make_unique<b_tree<std::string, schema>>(4, _default_string_comparer, nullptr, nullptr))
 {
     set_instance_name("schema_pool");
+    this->_logger = nullptr;
 }
 
 schemas_pool::~schemas_pool()
@@ -71,24 +72,34 @@ void schemas_pool::insert(const std::string &key, schema &&value)
     }
 }
 
-const schema &schemas_pool::obtain(const std::string &key)
+schema &schemas_pool::obtain(const std::string &key)
 {
-    try
-    {
-	return _data->obtain(key);
-    }
-    catch (std::exception const &e)
-    {
-	error_with_guard("Exception in obtain: " + std::string(e.what()));
-	throw;
-    }
+   return _data->obtain(key);
 }
 
-std::vector<typename associative_container<std::string, schema>::key_value_pair> schemas_pool::obtain_between(const std::string &lower_bound, const std::string &upper_bound, bool lower_bound_inclusive, bool upper_bound_inclusive)
+void schemas_pool::update(const std::string &key, const schema &value)
+{
+    _data->update(key, value);
+}
+
+void schemas_pool::update(const std::string &key, schema &&value)
+{
+    _data->update(key, value);
+}
+
+
+std::map<std::string, schema> schemas_pool::obtain_between(const std::string &lower_bound, const std::string &upper_bound, bool lower_bound_inclusive, bool upper_bound_inclusive)
 {
     try
     {
-	return _data->obtain_between(lower_bound, upper_bound, lower_bound_inclusive, upper_bound_inclusive);
+	auto vec = _data->obtain_between(lower_bound, upper_bound, lower_bound_inclusive, upper_bound_inclusive);
+    	std::map<std::string, schema> result_map;
+	for (auto &item: vec)
+	{
+	    result_map.emplace(item.key, item.value);
+	}
+
+	return result_map;
     }
     catch (std::exception const &e)
     {
@@ -169,4 +180,10 @@ void schemas_pool::save_schemas_pool_to_filesystem(const std::string &filename)
     }
 
     output_file.close();
+}
+void schemas_pool::serialize()
+{
+}
+void schemas_pool::deserialize()
+{
 }

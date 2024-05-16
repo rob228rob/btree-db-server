@@ -29,7 +29,11 @@ public:
 	    tkey const &key,
 	    tvalue &&value) override;
 
-    tvalue const &obtain(
+    void update(const tkey &key, const tvalue &value);
+
+    void update(const tkey &key, tvalue &&value);
+
+    tvalue &obtain(
 	    tkey const &key) override;
 
     tvalue dispose(
@@ -156,6 +160,7 @@ private:
 	    typename search_tree<tkey, tvalue>::common_node *node);
 
     void clear();
+
 
 };
 
@@ -408,7 +413,7 @@ void b_tree<tkey, tvalue>::insert(
 template<
 	typename tkey,
 	typename tvalue>
-tvalue const &b_tree<tkey, tvalue>::obtain(
+tvalue &b_tree<tkey, tvalue>::obtain(
 	const tkey &key)
 {
     auto path = this->find_path(key);
@@ -419,6 +424,38 @@ tvalue const &b_tree<tkey, tvalue>::obtain(
 
     return (*path.top().first)->keys_and_values[path.top().second].value;
 }
+
+template<
+	typename tkey,
+	typename tvalue>
+void b_tree<tkey, tvalue>::update(
+	const tkey &key, const tvalue &value)
+{
+    auto path = this->find_path(key);
+    if (path.top().second < 0)
+    {
+	throw std::logic_error("key not found");
+    }
+
+    (*path.top().first)->keys_and_values[path.top().second].value = value;
+}
+
+template<
+	typename tkey,
+	typename tvalue>
+void b_tree<tkey, tvalue>::update(
+	const tkey &key, tvalue &&value)
+{
+    auto path = this->find_path(key);
+    if (path.top().second < 0)
+    {
+	throw std::logic_error("key not found");
+    }
+
+    auto current = (*path.top().first)->keys_and_values[path.top().second];
+    current.value = std::move(value);
+}
+
 
 template<
 	typename tkey,
@@ -551,32 +588,32 @@ tvalue b_tree<tkey, tvalue>::dispose(
     }
 }
 
-template<
-	typename tkey,
-	typename tvalue>
-std::vector<typename associative_container<tkey, tvalue>::key_value_pair> b_tree<tkey, tvalue>::obtain_between(
-	tkey const &lower_bound,
-	tkey const &upper_bound,
-	bool lower_bound_inclusive,
-	bool upper_bound_inclusive)
-{
-    std::vector<typename associative_container<tkey, tvalue>::key_value_pair> range;
-
-    //TODO: find a path to lower_bound and get prev value;
-    b_tree<tkey, tvalue>::infix_const_iterator it = cbegin_infix();
-
-    while ((it != cend_infix()) &&
-	   (this->_keys_comparer(upper_bound, std::get<2>(*it)) > (upper_bound_inclusive ? -1 : 0)))
+    template<
+	    typename tkey,
+	    typename tvalue>
+    std::vector<typename associative_container<tkey, tvalue>::key_value_pair> b_tree<tkey, tvalue>::obtain_between(
+	    tkey const &lower_bound,
+	    tkey const &upper_bound,
+	    bool lower_bound_inclusive,
+	    bool upper_bound_inclusive)
     {
-	if (this->_keys_comparer(lower_bound, std::get<2>(*it)) < (lower_bound_inclusive ? 1 : 0))
-	{
-	    range.push_back(std::move(typename associative_container<tkey, tvalue>::key_value_pair(std::get<2>(*it), std::get<3>(*it))));
-	}
-	++it;
-    }
+	std::vector<typename associative_container<tkey, tvalue>::key_value_pair> range;
 
-    return range;
-}
+	//TODO: find a path to lower_bound and get prev value;
+	b_tree<tkey, tvalue>::infix_const_iterator it = cbegin_infix();
+
+	while ((it != cend_infix()) &&
+	       (this->_keys_comparer(upper_bound, std::get<2>(*it)) > (upper_bound_inclusive ? -1 : 0)))
+	{
+	    if (this->_keys_comparer(lower_bound, std::get<2>(*it)) < (lower_bound_inclusive ? 1 : 0))
+	    {
+		range.push_back(std::move(typename associative_container<tkey, tvalue>::key_value_pair(std::get<2>(*it), std::get<3>(*it))));
+	    }
+	    ++it;
+	}
+
+	return range;
+    }
 
 template<
 	typename tkey,
