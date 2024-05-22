@@ -71,6 +71,9 @@ public:
     void dispose(const std::string &key) override;
 
 private:
+
+    void insert_schema_to_filesystem(std::filesystem::path const &path);
+
     //TODO: Call serialize in destructor and deserialize in constructor, and Private access
     void serialize() override;
 

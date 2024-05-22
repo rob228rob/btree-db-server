@@ -3,11 +3,13 @@
 //
 
 #include "../include/data_base.h"
+#include <filesystem>
 #include <fstream>
 #include <iostream>
-#include <filesystem>
 
 std::function<int(const std::string &, const std::string &)> data_base::_default_string_comparer = [](const std::string &a, const std::string &b) -> int { return a.compare(b); };
+
+std::set<std::string> data_base::_instance_names;
 
 data_base::data_base()
     : _data(std::make_unique<b_tree<std::string, schemas_pool>>(4, _default_string_comparer, nullptr, nullptr))
@@ -27,36 +29,50 @@ data_base::data_base()
     this->set_strategy(storage_strategy::in_memory);
 }
 
-data_base::data_base(
-	std::size_t t,
-	std::string &instance_name,
-	allocator *allocator,
-	logger *logger, const std::function<int(const std::string &, const std::string &)> &keys_comparer,
-	storage_interface<std::string, schemas_pool>::storage_strategy storaged_strategy) : _data(std::make_unique<b_tree<std::string, schemas_pool>>(2, _default_string_comparer, allocator, logger))
+void data_base::throw_if_name_exist(std::string const &instance_name)
 {
-    this->set_instance_name(instance_name);
-    this->set_strategy(storaged_strategy);
-    this->_logger = logger;
-
+    throw_if_key_invalid(instance_name);
     auto it = _instance_names.find(instance_name);
     if (it != _instance_names.end())
     {
 	throw std::logic_error("duplicate instance name");
     }
+}
 
+data_base::data_base(const std::string &instance_name, storage_strategy strategy, allocator* allocator)
+    : _data(std::make_unique<b_tree<std::string, schemas_pool>>(4, _default_string_comparer, allocator, nullptr))
+{
+    throw_if_name_exist(instance_name);
+    //TODO: create filesystem logic for INSTANCES
+    this->set_instance_name(instance_name);
     _instance_names.emplace(instance_name);
 
-    if (storaged_strategy == storage_strategy::in_memory)
+    this->_logger = nullptr;
+    this->set_strategy(strategy);
+
+    try
     {
-	load_db_from_filesystem();
+	_instance_path = std::filesystem::absolute(instance_name);
+	if (std::filesystem::exists(_instance_path))
+	{
+	    return;
+	}
+	std::filesystem::create_directories(_instance_path);
+    }
+    catch (...)
+    {
+	_instance_names.erase(instance_name);
+	throw;
     }
 }
 
 data_base::~data_base()
 {
+    //TODO: CHANGE LOGIC TO NEW CONSTRUCTOR!!!!!!!!!!!!!!!!!!!))!)!))______!!!!!!!!!!!!!!!!!
+
     if (this->get_strategy() == storage_strategy::in_memory)
     {
-	save_db_to_filesystem();
+	//save_db_to_filesystem();
     }
 }
 
@@ -96,7 +112,7 @@ void data_base::update(const std::string &key, schemas_pool &&value)
 
 schemas_pool &data_base::obtain(const std::string &key)
 {
-    _data->obtain(key);
+    return _data->obtain(key);
 }
 
 std::map<std::string, schemas_pool> data_base::obtain_between(
@@ -132,101 +148,68 @@ void data_base::serialize()
 {
 }
 
-table &data_base::get_table_by_key(
-	const std::string &schemas_pool_name,
-	const std::string &schema_name,
-	const std::string &table_name)
-{
-    schema schema = get_schema_by_key(schemas_pool_name, schema_name);
-
-    table table = schema.obtain(table_name);
-
-    return table;
-}
-
-schema &data_base::get_schema_by_key(
-	const std::string &schemas_pool_name,
-	const std::string &schema_name)
-{
-    schemas_pool pool;
-    try
-    {
-	pool = _data->obtain(schemas_pool_name);
-    }
-    catch (std::exception const &e)
-    {
-	error_with_guard("schemas_pool not found; key: [ " + schemas_pool_name + " ]");
-	throw;
-    }
-
-
-    try
-    {
-	const schema &schema = pool.obtain(schema_name);
-
-	return const_cast<class schema &>(schema);
-    }
-    catch (std::exception const &e)
-    {
-	error_with_guard("schemas_pool not found; key: [ " + schemas_pool_name + " ]");
-	throw;
-    }
-}
-
-
 void data_base::insert_schemas_pool(const std::string &schemas_pool_name, const schemas_pool &value)
 {
-    throw_if_invalid(schemas_pool_name);
+    throw_if_key_invalid(schemas_pool_name);
     switch (this->get_strategy())
     {
 	case storage_strategy::in_memory:
 	    insert(schemas_pool_name, value);
 	    break;
 	case storage_strategy::filesystem:
-	    insert_pool_to_filesystem(schemas_pool_name, value);
+	    add_pool_to_filesystem(schemas_pool_name);
 	    break;
     }
 }
 
 void data_base::insert_schemas_pool(const std::string &schemas_pool_name, schemas_pool &&value)
 {
-    throw_if_invalid(schemas_pool_name);
+    throw_if_key_invalid(schemas_pool_name);
     switch (this->get_strategy())
     {
 	case storage_strategy::in_memory:
 	    insert(schemas_pool_name, std::move(value));
 	    break;
 	case storage_strategy::filesystem:
-	    insert_pool_to_filesystem(schemas_pool_name, value);
+	    add_pool_to_filesystem(schemas_pool_name);
 	    break;
     }
 }
 
 void data_base::insert_schema(const std::string &schemas_pool_name, const std::string &schema_name, const schema &value)
 {
-    throw_if_invalid(schemas_pool_name);
-    throw_if_invalid(schema_name);
+    throw_if_key_invalid(schemas_pool_name);
+    throw_if_key_invalid(schema_name);
 
     switch (this->get_strategy())
     {
-	case storage_strategy::in_memory:
-	{
+	case storage_strategy::in_memory: {
 	    auto &pool = _data->obtain(schemas_pool_name);
 	    pool.insert(schema_name, value);
 	}
-	    break;
+	break;
 	case storage_strategy::filesystem:
+	    add_schema_to_filesystem(schemas_pool_name, schema_name);
 	    break;
     }
-
 }
 
 void data_base::insert_schema(const std::string &schemas_pool_name, const std::string &schema_name, schema &&value)
 {
-    throw_if_invalid(schemas_pool_name);
-    throw_if_invalid(schema_name);
-    auto &pool = _data->obtain(schemas_pool_name);
-    pool.insert(schema_name, value);
+    throw_if_key_invalid(schemas_pool_name);
+    throw_if_key_invalid(schema_name);
+
+    switch (this->get_strategy())
+    {
+	case storage_strategy::in_memory: {
+	    auto &pool = _data->obtain(schemas_pool_name);
+	    pool.insert(schema_name, std::move(value));
+	}
+	break;
+	case storage_strategy::filesystem:
+	    add_schema_to_filesystem(schemas_pool_name, schema_name);
+	    break;
+    }
 }
 
 void data_base::insert_table(
@@ -235,23 +218,22 @@ void data_base::insert_table(
 	const std::string &table_name,
 	const table &value)
 {
-    throw_if_invalid(schemas_pool_name);
-    throw_if_invalid(schema_name);
-    throw_if_invalid(table_name);
+    throw_if_key_invalid(schemas_pool_name);
+    throw_if_key_invalid(schema_name);
+    throw_if_key_invalid(table_name);
 
     switch (this->get_strategy())
     {
-	case storage_strategy::in_memory:
-	{
+	case storage_strategy::in_memory: {
 	    auto &pool = _data->obtain(schemas_pool_name);
 	    auto &schm = pool.obtain(schema_name);
 	    schm.insert(table_name, value);
 	}
 	break;
 	case storage_strategy::filesystem:
+	    add_table_to_filesystem(schemas_pool_name, schema_name, table_name);
 	    break;
     }
-
 }
 
 void data_base::insert_table(
@@ -260,23 +242,22 @@ void data_base::insert_table(
 	const std::string &table_name,
 	table &&value)
 {
-    throw_if_invalid(schemas_pool_name);
-    throw_if_invalid(schema_name);
-    throw_if_invalid(table_name);
+    throw_if_key_invalid(schemas_pool_name);
+    throw_if_key_invalid(schema_name);
+    throw_if_key_invalid(table_name);
 
     switch (this->get_strategy())
     {
-	case storage_strategy::in_memory:
-	{
+	case storage_strategy::in_memory: {
 	    auto &pool = _data->obtain(schemas_pool_name);
 	    auto &schm = pool.obtain(schema_name);
 	    schm.insert(table_name, value);
 	}
 	break;
 	case storage_strategy::filesystem:
+	    add_table_to_filesystem(schemas_pool_name, schema_name, table_name);
 	    break;
     }
-
 }
 
 void data_base::insert_data(
@@ -286,15 +267,14 @@ void data_base::insert_data(
 	const std::string &user_data_key,
 	user_data &&value)
 {
-    throw_if_invalid(schemas_pool_name);
-    throw_if_invalid(schema_name);
-    throw_if_invalid(table_name);
-    throw_if_invalid(user_data_key);
+    throw_if_key_invalid(schemas_pool_name);
+    throw_if_key_invalid(schema_name);
+    throw_if_key_invalid(table_name);
+    throw_if_key_invalid(user_data_key);
 
     switch (this->get_strategy())
     {
-	case storage_strategy::in_memory:
-	{
+	case storage_strategy::in_memory: {
 	    auto &pool = _data->obtain(schemas_pool_name);
 	    auto &schm = pool.obtain(schema_name);
 	    auto &tbl = schm.obtain(table_name);
@@ -302,9 +282,9 @@ void data_base::insert_data(
 	}
 	break;
 	case storage_strategy::filesystem:
+	    insert_data_to_filesystem(schemas_pool_name, schema_name, table_name, user_data_key, value);
 	    break;
     }
-
 }
 
 void data_base::insert_data(
@@ -314,15 +294,14 @@ void data_base::insert_data(
 	const std::string &user_data_key,
 	const user_data &value)
 {
-    throw_if_invalid(schemas_pool_name);
-    throw_if_invalid(schema_name);
-    throw_if_invalid(table_name);
-    throw_if_invalid(user_data_key);
+    throw_if_key_invalid(schemas_pool_name);
+    throw_if_key_invalid(schema_name);
+    throw_if_key_invalid(table_name);
+    throw_if_key_invalid(user_data_key);
 
     switch (this->get_strategy())
     {
-	case storage_strategy::in_memory:
-	{
+	case storage_strategy::in_memory: {
 	    auto &pool = _data->obtain(schemas_pool_name);
 	    auto &schm = pool.obtain(schema_name);
 	    auto &tbl = schm.obtain(table_name);
@@ -330,16 +309,17 @@ void data_base::insert_data(
 	}
 	break;
 	case storage_strategy::filesystem:
+	    insert_data_to_filesystem(schemas_pool_name, schema_name, table_name, user_data_key, value);
 	    break;
     }
 }
 
-const user_data &data_base::obtain_data(const std::string &schemas_pool_name, const std::string &schema_name, const std::string &table_name, const std::string &user_data_key)
+user_data data_base::obtain_data(const std::string &schemas_pool_name, const std::string &schema_name, const std::string &table_name, const std::string &user_data_key)
 {
-    throw_if_invalid(schemas_pool_name);
-    throw_if_invalid(schema_name);
-    throw_if_invalid(table_name);
-    throw_if_invalid(user_data_key);
+    throw_if_key_invalid(schemas_pool_name);
+    throw_if_key_invalid(schema_name);
+    throw_if_key_invalid(table_name);
+    throw_if_key_invalid(user_data_key);
 
     switch (this->get_strategy())
     {
@@ -350,59 +330,108 @@ const user_data &data_base::obtain_data(const std::string &schemas_pool_name, co
 	    const auto &data = tbl.obtain(user_data_key);
 	    return data;
 	}
-	case storage_strategy::filesystem:
-	    auto pool_key = find_key_in_file(schemas_pool_name);
-	    auto sch_key = find_key_in_file(pool_key);
-	    break;
+	case storage_strategy::filesystem: {
+	    auto ud = obtain_data_in_filesystem(schemas_pool_name, schema_name, table_name, user_data_key);
+	    return ud;
+	}
     }
 }
 
 void data_base::update_data(const std::string &schemas_pool_name, const std::string &schema_name, const std::string &table_name, const std::string &user_data_key, const user_data &value)
 {
-    throw_if_invalid(schemas_pool_name);
-    throw_if_invalid(schema_name);
-    throw_if_invalid(table_name);
-    throw_if_invalid(user_data_key);
-    auto &pool = _data->obtain(schemas_pool_name);
-    auto &schm = pool.obtain(schema_name);
-    auto &tbl = schm.obtain(table_name);
-    tbl.update(user_data_key, value);
+    throw_if_key_invalid(schemas_pool_name);
+    throw_if_key_invalid(schema_name);
+    throw_if_key_invalid(table_name);
+    throw_if_key_invalid(user_data_key);
+
+    switch (this->get_strategy())
+    {
+	case storage_strategy::in_memory: {
+	    auto &pool = _data->obtain(schemas_pool_name);
+	    auto &schm = pool.obtain(schema_name);
+	    auto &tbl = schm.obtain(table_name);
+	    tbl.update(user_data_key, value);
+	}
+	break;
+	case storage_strategy::filesystem:
+	    update_ud_in_filesystem(schemas_pool_name, schema_name, table_name, user_data_key, value);
+	    break;
+    }
 }
 
 void data_base::update_data(const std::string &schemas_pool_name, const std::string &schema_name, const std::string &table_name, const std::string &user_data_key, user_data &&value)
 {
-    throw_if_invalid(schemas_pool_name);
-    throw_if_invalid(schema_name);
-    throw_if_invalid(table_name);
-    throw_if_invalid(user_data_key);
-    auto &pool = _data->obtain(schemas_pool_name);
-    auto &schm = pool.obtain(schema_name);
-    auto &tbl = schm.obtain(table_name);
-    tbl.update(user_data_key, value);
+    throw_if_key_invalid(schemas_pool_name);
+    throw_if_key_invalid(schema_name);
+    throw_if_key_invalid(table_name);
+    throw_if_key_invalid(user_data_key);
+
+    switch (this->get_strategy())
+    {
+	case storage_strategy::in_memory: {
+	    auto &pool = _data->obtain(schemas_pool_name);
+	    auto &schm = pool.obtain(schema_name);
+	    auto &tbl = schm.obtain(table_name);
+	    tbl.update(user_data_key, value);
+	}
+	break;
+	case storage_strategy::filesystem:
+	    update_ud_in_filesystem(schemas_pool_name, schema_name, table_name, user_data_key, std::move(value));
+	    break;
+    }
 }
 
 void data_base::dispose_schemas_pool(const std::string &schemas_pool_name)
 {
-    throw_if_invalid(schemas_pool_name);
-    _data->dispose(schemas_pool_name);
+    throw_if_key_invalid(schemas_pool_name);
+
+    switch (this->get_strategy())
+    {
+	case storage_strategy::in_memory:
+	    _data->dispose(schemas_pool_name);
+	    break;
+	case storage_strategy::filesystem:
+	    dispose_pool_in_filesystem(schemas_pool_name);
+	    break;
+    }
 }
 
 void data_base::dispose_schema(const std::string &schemas_pool_name, const std::string &schema_name)
 {
-    throw_if_invalid(schemas_pool_name);
-    throw_if_invalid(schema_name);
-    auto &target_pool = _data->obtain(schemas_pool_name);
-    target_pool.dispose(schema_name);
+    throw_if_key_invalid(schemas_pool_name);
+    throw_if_key_invalid(schema_name);
+
+    switch (this->get_strategy())
+    {
+	case storage_strategy::in_memory: {
+	    auto &target_pool = _data->obtain(schemas_pool_name);
+	    target_pool.dispose(schema_name);
+	}
+	break;
+	case storage_strategy::filesystem:
+	    dispose_schema_in_filesystem(schemas_pool_name, schema_name);
+	    break;
+    }
 }
 
 void data_base::dispose_table(const std::string &schemas_pool_name, const std::string &schema_name, const std::string &table_name)
 {
-    throw_if_invalid(schemas_pool_name);
-    throw_if_invalid(schema_name);
-    throw_if_invalid(table_name);
-    auto &target_pool = _data->obtain(schemas_pool_name);
-    auto &schema = target_pool.obtain(schema_name);
-    schema.dispose(table_name);
+    throw_if_key_invalid(schemas_pool_name);
+    throw_if_key_invalid(schema_name);
+    throw_if_key_invalid(table_name);
+
+    switch (this->get_strategy())
+    {
+	case storage_strategy::in_memory: {
+	    auto &target_pool = _data->obtain(schemas_pool_name);
+	    auto &schema = target_pool.obtain(schema_name);
+	    schema.dispose(table_name);
+	}
+	break;
+	case storage_strategy::filesystem:
+	    dispose_table_in_filesystem(schemas_pool_name, schema_name, table_name);
+	    break;
+    }
 }
 
 void data_base::dispose_user_data(
@@ -411,20 +440,114 @@ void data_base::dispose_user_data(
 	const std::string &table_name,
 	const std::string &user_data_key)
 {
-    throw_if_invalid(schemas_pool_name);
-    throw_if_invalid(schema_name);
-    throw_if_invalid(table_name);
-    throw_if_invalid(user_data_key);
-    auto &target_pool = _data->obtain(schemas_pool_name);
-    auto &schema = target_pool.obtain(schema_name);
-    auto &tbl = schema.obtain(table_name);
-    tbl.dispose(user_data_key);
+    throw_if_key_invalid(schemas_pool_name);
+    throw_if_key_invalid(schema_name);
+    throw_if_key_invalid(table_name);
+    throw_if_key_invalid(user_data_key);
+
+    switch (this->get_strategy())
+    {
+	case storage_strategy::in_memory: {
+	    auto &target_pool = _data->obtain(schemas_pool_name);
+	    auto &schema = target_pool.obtain(schema_name);
+	    auto &tbl = schema.obtain(table_name);
+	    tbl.dispose(user_data_key);
+	}
+	break;
+	case storage_strategy::filesystem:
+	    dispose_ud_in_filesystem(schemas_pool_name, schema_name, table_name, user_data_key);
+	    break;
+    }
+}
+
+void data_base::load_data_base_state()
+{
+    if (get_strategy() != storage_strategy::in_memory)
+    {
+	throw std::logic_error("Invalid strategy for this operation");
+    }
+
+    std::filesystem::path db_storage_path = _instance_path / _additional_storage;
+
+    if (!std::filesystem::exists(db_storage_path))
+    {
+	throw std::runtime_error("Database directory does not exist: " + db_storage_path.string());
+    }
+
+    for (auto &pool_entry: std::filesystem::directory_iterator(db_storage_path))
+    {
+	if (!pool_entry.is_directory())
+	{
+	    continue;
+	}
+
+	auto pool_path = pool_entry.path();
+	std::cout << "Loading pool: " << pool_path << std::endl;
+	schemas_pool pool;
+	for (auto &schema_entry: std::filesystem::directory_iterator(pool_entry))
+	{
+	    if (!schema_entry.is_directory())
+	    {
+		continue;
+	    }
+
+	    auto schema_path = schema_entry.path();
+	    std::cout << "Loading schema: " << schema_path << std::endl;
+	    schema schm;
+	    for (auto &table_entry: std::filesystem::directory_iterator(schema_entry))
+	    {
+		if (!table_entry.is_regular_file())
+		{
+		    continue;
+		}
+
+		auto table_path = table_entry.path();
+		std::cout << "Found table: " << table_path << std::endl;
+
+		std::cout << "Path to table file: " << table_entry.path() << std::endl;
+		table tbl = table::load_data_from_filesystem(table_path.string());
+		auto tbl_name = table_path.filename().string();
+		for (int i = 0; i < _file_format.length(); ++i)
+		{
+		    tbl_name.pop_back();
+		}
+
+		schm.insert(tbl_name, std::move(tbl));
+	    }
+	    pool.insert(schema_path.filename().string(), schm);
+	}
+	_data->insert(pool_path.filename().string(), pool);
+    }
+}
+
+
+void data_base::save_data_base_state()
+{
+    if (get_strategy() != storage_strategy::in_memory)
+    {
+	throw std::logic_error("Invalid strategy for this operation");
+    }
+
+    auto it = _data->begin_infix();
+    auto it_end = _data->end_infix();
+    while (it != it_end)
+    {
+	auto string_key = std::get<2>(*it);
+	auto target_schemas_pool = std::get<3>(*it);
+
+	insert_pool_to_filesystem(string_key, std::move(target_schemas_pool));
+	++it;
+    }
 }
 
 void data_base::save_db_to_filesystem()
 {
     //TODO: save class-state and add prefix _abs_directory;
-
+    // TODO:!!!!! UPDATE LOGIC!!!!!!!!!!!!
+    if (get_strategy() != storage_strategy::in_memory)
+    {
+	throw std::logic_error("Invalid strategy for this operation");
+    }
     std::string filename = this->_instance_name + data_base::_file_format;
 
     std::ofstream output_file(filename);
@@ -484,8 +607,13 @@ void data_base::deserialize()
 {
 }
 
-void data_base::throw_if_invalid(const std::string &key)
+void data_base::throw_if_key_invalid(const std::string &key)
 {
+    if (key.empty())
+    {
+	throw std::logic_error("key must not be an empty");
+    }
+
     size_t length = key.length();
 
     if (length > 20)
@@ -502,273 +630,918 @@ void data_base::throw_if_invalid(const std::string &key)
     }
 }
 
-/*
- *
- * Need be tested!!!
- *TODO: replace with storage_interface<>::bin_search
- */
-std::string data_base::find_key_in_file(const std::string &key)
+std::map<std::string, user_data> data_base::obtain_between_data(const std::string &pool_name, const std::string &schema_name, const std::string &table_name, const std::string &lower_bound, const std::string &upper_bound, bool lower_bound_inclusive, bool upper_bound_inclusive)
 {
-    if (key.length() == 0)
+    throw_if_key_invalid(pool_name);
+    throw_if_key_invalid(schema_name);
+    throw_if_key_invalid(table_name);
+    throw_if_key_invalid(lower_bound);
+    throw_if_key_invalid(upper_bound);
+
+    switch (this->get_strategy())
     {
-	throw std::logic_error("invalid arguments");
+	case storage_strategy::in_memory: {
+	    auto &pool = _data->obtain(pool_name);
+	    auto &schm = pool.obtain(schema_name);
+	    auto &tbl = schm.obtain(table_name);
+	    return tbl.obtain_between(lower_bound, upper_bound, lower_bound_inclusive, upper_bound_inclusive);
+	}
+	case storage_strategy::filesystem:
+	    return obtain_between_ud_in_filesystem(pool_name, schema_name, table_name, lower_bound, upper_bound, lower_bound_inclusive, upper_bound_inclusive);
     }
+}
 
-    //TODO: think about std:::Absolute!!!!!!!!!!!!!!!!!!!!!!!!!!!!
-    auto filename = std::filesystem::absolute(get_instance_name() + _file_format);
-    auto index_filename = std::filesystem::absolute(std::string{"index_"} + get_instance_name() + _file_format);
+void data_base::insert_pool_to_filesystem(const std::string &pool_name, const schemas_pool &value)
+{
+    std::filesystem::path inmem_storage_path = _instance_path / (_additional_storage);
 
-    std::ifstream index_file(index_filename);
-    if (!index_file.is_open())
+    if (!std::filesystem::exists(inmem_storage_path))
     {
-	throw std::runtime_error("file did not open");
-    }
 
-    std::vector<std::streamoff> index_array;
-    std::string index_str;
-    while (std::getline(index_file, index_str, '#'))
-    {
-	index_array.push_back(std::stol(index_str));
-    }
-
-    index_file.close();
-
-    std::ifstream main_file(filename);
-    if (!main_file.is_open())
-    {
-	throw std::runtime_error(std::string{"file did not open"});
-    }
-
-    size_t left = 0;
-    size_t right = index_array.size() - 1;
-
-    while (left <= right)
-    {
-	size_t mid = left + (right - left) / 2;
-
-	main_file.seekg(index_array[mid]);
-
-	std::string file_key;
-	std::getline(main_file, file_key, '|');
-
-	if (key == file_key)
+	if (!std::filesystem::create_directory(inmem_storage_path))
 	{
-	    main_file.close();
-	    return file_key;
+	    throw std::runtime_error("Directory already exist: " + pool_name);
+	}
+    }
+
+    std::filesystem::path pool_path = inmem_storage_path / pool_name;
+
+    if (!std::filesystem::exists(pool_path))
+    {
+	if (!std::filesystem::create_directory(pool_path))
+	{
+	    throw std::runtime_error("Directory already exist: " + pool_name);
+	}
+    }
+
+    auto it = value._data->begin_infix();
+    auto it_end = value._data->end_infix();
+    while (it != it_end)
+    {
+	auto schema_name = std::get<2>(*it);
+	auto target_schema = std::get<3>(*it);
+
+	std::filesystem::path schema_path = pool_path / schema_name;
+
+	if (!std::filesystem::exists(schema_path))
+	{
+	    if (!std::filesystem::create_directory(schema_path))
+	    {
+		throw std::runtime_error("Could not create dir" + schema_name);
+	    }
 	}
 
-	if (file_key < key)
+	target_schema.insert_schema_to_filesystem(schema_path);
+	++it;
+    }
+}
+
+void data_base::insert_pool_to_filesystem(const std::string &pool_name, schemas_pool &&value)
+{
+    std::filesystem::path inmem_storage_path = _instance_path / (_additional_storage);
+
+    if (!std::filesystem::exists(inmem_storage_path))
+    {
+
+	if (!std::filesystem::create_directory(inmem_storage_path))
 	{
-	    left = mid + 1;
+	    throw std::runtime_error("Directory already exist: " + pool_name);
+	}
+    }
+
+    std::filesystem::path pool_path = inmem_storage_path / pool_name;
+
+    if (!std::filesystem::exists(pool_path))
+    {
+	if (!std::filesystem::create_directory(pool_path))
+	{
+	    throw std::runtime_error("Directory already exist: " + pool_name);
+	}
+    }
+
+    auto it = value._data->begin_infix();
+    auto it_end = value._data->end_infix();
+    while (it != it_end)
+    {
+	auto schema_name = std::get<2>(*it);
+	auto target_schema = std::get<3>(*it);
+
+	std::filesystem::path schema_path = pool_path / schema_name;
+
+	if (!std::filesystem::exists(schema_path))
+	{
+	    if (!std::filesystem::create_directory(schema_path))
+	    {
+		throw std::runtime_error("Could not create dir" + schema_name);
+	    }
+	}
+
+	target_schema.insert_schema_to_filesystem(schema_path);
+	++it;
+    }
+}
+
+void data_base::insert_schema_to_filesystem(const std::string &pool_name, const std::string &schema_name, schema &&value)
+{
+
+    std::filesystem::path pool_path = _instance_path / pool_name;
+
+    if (!std::filesystem::exists(pool_path))
+    {
+	if (!std::filesystem::create_directory(pool_path))
+	{
+	    throw std::runtime_error("Could not create pool directory: " + pool_name);
+	}
+    }
+
+    std::filesystem::path schema_path = pool_path / schema_name;
+
+    if (!std::filesystem::exists(schema_path))
+    {
+	if (!std::filesystem::create_directory(schema_path))
+	{
+	    throw std::runtime_error("Could not create schema directory: " + schema_name);
+	}
+    }
+
+    value.insert_schema_to_filesystem(schema_path);
+}
+
+void data_base::insert_table_to_filesystem(const std::string &pool_name, const std::string &schema_name, const std::string &table_name, table &&value)
+{
+    std::filesystem::path pool_path = _instance_path / pool_name;
+
+    if (!std::filesystem::exists(pool_path) && !std::filesystem::create_directory(pool_path))
+    {
+	throw std::runtime_error("Could not create pool directory: " + pool_name);
+    }
+
+    std::filesystem::path schema_path = pool_path / schema_name;
+
+    if (!std::filesystem::exists(schema_path) && !std::filesystem::create_directory(schema_path))
+    {
+	throw std::runtime_error("Could not create schema directory: " + schema_name);
+    }
+
+    std::filesystem::path table_file_path = schema_path / (table_name + table::_file_format);
+
+    try
+    {
+	value.insert_table_to_filesystem(table_file_path);
+    }
+    catch (...)
+    {
+	throw;
+    }
+}
+
+void data_base::insert_data_to_filesystem(const std::string &pool_name, const std::string &schema_name, const std::string &table_name, const std::string &user_data_key, user_data &&value)
+{
+    std::filesystem::path pool_path = _instance_path / pool_name;
+
+    if (!std::filesystem::exists(pool_path) && !std::filesystem::create_directory(pool_path))
+    {
+	throw std::runtime_error("Could not create pool directory: " + pool_name);
+    }
+
+    std::filesystem::path schema_path = pool_path / schema_name;
+
+    if (!std::filesystem::exists(schema_path) && !std::filesystem::create_directory(schema_path))
+    {
+	throw std::runtime_error("Could not create schema directory: " + schema_name);
+    }
+
+    auto table_path = schema_path / (table_name + _file_format);
+    auto index_table_path = schema_path / ("index_" + table_name + _file_format);
+
+    table::insert_ud_to_filesystem(table_path, index_table_path, user_data_key, std::move(value));
+}
+
+void data_base::insert_schema_to_filesystem(const std::string &pool_name, const std::string &schema_name, const schema &value)
+{
+}
+
+void data_base::insert_data_to_filesystem(const std::string &pool_name, const std::string &schema_name, const std::string &table_name, const std::string &user_data_key, const user_data &value)
+{
+    std::filesystem::path pool_path = _instance_path / pool_name;
+
+    if (!std::filesystem::exists(pool_path) && !std::filesystem::create_directory(pool_path))
+    {
+	throw std::runtime_error("Could not create pool directory: " + pool_name);
+    }
+
+    std::filesystem::path schema_path = pool_path / schema_name;
+
+    if (!std::filesystem::exists(schema_path) && !std::filesystem::create_directory(schema_path))
+    {
+	throw std::runtime_error("Could not create schema directory: " + schema_name);
+    }
+
+    auto table_path = schema_path / (table_name + _file_format);
+    auto index_table_path = schema_path / ("index_" + table_name + _file_format);
+
+    if (!std::filesystem::exists(table_path) || !std::filesystem::exists(index_table_path))
+    {
+	throw std::runtime_error("Could not insert to undefined Table" + table_path.string());
+    }
+
+
+    table::insert_ud_to_filesystem(table_path, index_table_path, user_data_key, value);
+}
+
+void data_base::insert_table_to_filesystem(const std::string &pool_name, const std::string &schema_name, const std::string &table_name, const table &value)
+{
+    std::filesystem::path pool_path = _instance_path / pool_name;
+
+    if (!std::filesystem::exists(pool_path) || !std::filesystem::is_directory(pool_path))
+    {
+	throw std::runtime_error("Pool directory does not exist: " + pool_name);
+    }
+
+    std::filesystem::path schema_path = pool_path / schema_name;
+
+    if (!std::filesystem::exists(schema_path) || !std::filesystem::is_directory(schema_path))
+    {
+	throw std::runtime_error("Schema directory does not exist: " + schema_path.string());
+    }
+
+    auto table_path = schema_path / (table_name + _file_format);
+    auto index_table_path = schema_path / ("index_" + table_name + _file_format);
+    if (!std::filesystem::exists(table_path))
+    {
+	table::check_and_create_empty(table_path, index_table_path);
+    }
+}
+
+void data_base::add_table_to_filesystem(const std::string &pool_name, const std::string &schema_name, const std::string &table_name)
+{
+    std::filesystem::path pool_path = _instance_path / pool_name;
+
+    if (!std::filesystem::exists(pool_path) || !std::filesystem::is_directory(pool_path))
+    {
+	throw std::runtime_error("Pool directory does not exist: " + pool_name);
+    }
+
+    std::filesystem::path schema_path = pool_path / schema_name;
+
+    if (!std::filesystem::exists(schema_path) || !std::filesystem::is_directory(schema_path))
+    {
+	throw std::runtime_error("Schema directory does not exist: " + schema_path.string());
+    }
+
+    auto table_path = schema_path / (table_name + _file_format);
+    auto index_table_path = schema_path / ("index_" + table_name + _file_format);
+    if (!std::filesystem::exists(table_path))
+    {
+	table::check_and_create_empty(table_path, index_table_path);
+    }
+}
+
+void data_base::add_schema_to_filesystem(const std::string &pool_name, const std::string &schema_name)
+{
+    std::filesystem::path pool_path = _instance_path / pool_name;
+
+    if (!std::filesystem::exists(pool_path) || !std::filesystem::is_directory(pool_path))
+    {
+	throw std::runtime_error("Pool directory does not exist: " + pool_name);
+    }
+
+    std::filesystem::path schema_path = pool_path / schema_name;
+
+    if (!std::filesystem::exists(schema_path))
+    {
+	if (!std::filesystem::create_directory(schema_path))
+	{
+	    throw std::runtime_error("Could not create schema directory: " + schema_name);
+	}
+    }
+}
+
+void data_base::add_pool_to_filesystem(const std::string &pool_name)
+{
+    std::filesystem::path pool_path = _instance_path / pool_name;
+
+    if (!std::filesystem::exists(pool_path) && !std::filesystem::is_directory(pool_path))
+    {
+	if (!std::filesystem::create_directory(pool_path))
+	{
+	    throw std::runtime_error("Could not create schema directory: " + pool_path.string());
+	}
+    }
+}
+
+user_data data_base::obtain_data_in_filesystem(const std::string &pool_name, const std::string &schema_name, const std::string &table_name, const std::string &ud_key)
+{
+    std::filesystem::path pool_path = _instance_path / pool_name;
+
+    if (!std::filesystem::exists(pool_path) || !std::filesystem::is_directory(pool_path))
+    {
+	throw std::runtime_error("Could not find pool directory: " + pool_name);
+    }
+
+    std::filesystem::path schema_path = pool_path / schema_name;
+
+    if (!std::filesystem::exists(schema_path) || !std::filesystem::is_directory(schema_path))
+    {
+	throw std::runtime_error("Could not find schema directory: " + schema_name);
+    }
+
+    auto table_path = schema_path / (table_name + _file_format);
+    auto index_table_path = schema_path / ("index_" + table_name + _file_format);
+
+    if (!std::filesystem::exists(table_path) || !std::filesystem::exists(index_table_path))
+    {
+	throw std::runtime_error("Could not obtain in undefined Table" + table_path.string());
+    }
+
+    return storage_interface::obtain_in_filesystem(table_path, index_table_path, ud_key);
+}
+
+void data_base::update_ud_in_filesystem(const std::string &pool_name, const std::string &schema_name, const std::string &table_name, const std::string &user_data_key, user_data &&value)
+{
+    std::filesystem::path pool_path = _instance_path / pool_name;
+
+    if (!std::filesystem::exists(pool_path) || !std::filesystem::is_directory(pool_path))
+    {
+	throw std::runtime_error("Could not find pool directory: " + pool_name);
+    }
+
+    std::filesystem::path schema_path = pool_path / schema_name;
+
+    if (!std::filesystem::exists(schema_path) || !std::filesystem::is_directory(schema_path))
+    {
+	throw std::runtime_error("Could not find schema directory: " + schema_name);
+    }
+
+    auto table_path = schema_path / (table_name + _file_format);
+    auto index_table_path = schema_path / ("index_" + table_name + _file_format);
+
+    if (!std::filesystem::exists(table_path) || !std::filesystem::exists(index_table_path))
+    {
+	throw std::runtime_error("Could not obtain in undefined Table" + table_path.string());
+    }
+
+    table::update_ud_in_filesystem(table_path, index_table_path, user_data_key, std::move(value));
+}
+
+void data_base::update_ud_in_filesystem(const std::string &schemas_pool_name, const std::string &schema_name, const std::string &table_name, const std::string &user_data_key, const user_data &value)
+{
+}
+
+void data_base::dispose_pool_in_filesystem(const std::string &pool_name)
+{
+    std::filesystem::path pool_path = _instance_path / pool_name;
+
+    if (std::filesystem::exists(pool_path) && std::filesystem::is_directory(pool_path))
+    {
+	try
+	{
+
+	    std::filesystem::remove_all(pool_path);
+	}
+	catch (const std::filesystem::filesystem_error &e)
+	{
+
+	    throw std::runtime_error("Could not dispose pool directory: " + pool_path.string() + " Error: " + e.what());
+	}
+    }
+}
+
+void data_base::dispose_schema_in_filesystem(const std::string &pool_name, const std::string &schema_name)
+{
+    std::filesystem::path pool_path = _instance_path / pool_name;
+
+    if (!std::filesystem::exists(pool_path) || !std::filesystem::is_directory(pool_path))
+    {
+	throw std::runtime_error("Pool directory does not exist: " + pool_name);
+    }
+
+    std::filesystem::path schema_path = pool_path / schema_name;
+
+    if (std::filesystem::exists(schema_path) && std::filesystem::is_directory(schema_path))
+    {
+	try
+	{
+	    std::filesystem::remove_all(schema_path);
+	}
+	catch (...)
+	{
+	    throw std::runtime_error("Could not dispose schema directory: " + schema_name);
+	}
+    }
+}
+
+void data_base::dispose_table_in_filesystem(const std::string &schemas_pool_name, const std::string &schema_name, const std::string &table_name)
+{
+    std::filesystem::path pool_path = _instance_path / schemas_pool_name;
+
+    if (!std::filesystem::exists(pool_path) || !std::filesystem::is_directory(pool_path))
+    {
+	throw std::runtime_error("Could not find pool directory: " + schemas_pool_name);
+    }
+
+    std::filesystem::path schema_path = pool_path / schema_name;
+
+    if (!std::filesystem::exists(schema_path) || !std::filesystem::is_directory(schema_path))
+    {
+	throw std::runtime_error("Could not find schema directory: " + schema_name);
+    }
+
+    auto table_path = schema_path / (table_name + _file_format);
+    auto index_table_path = schema_path / ("index_" + table_name + _file_format);
+
+    if (!std::filesystem::exists(table_path))
+    {
+	throw std::runtime_error("Table file does not exist: " + table_path.string());
+    }
+
+    if (!std::filesystem::exists(index_table_path))
+    {
+	throw std::runtime_error("Index file does not exist: " + index_table_path.string());
+    }
+
+    create_backup(table_path);
+    create_backup(index_table_path);
+    try
+    {
+	std::filesystem::remove(table_path);
+	std::filesystem::remove(index_table_path);
+	delete_backup(table_path);
+	delete_backup(index_table_path);
+    }
+    catch (...)
+    {
+	storage_interface::load_backup(table_path);
+	storage_interface::load_backup(index_table_path);
+	throw;
+    }
+}
+
+std::map<std::string, user_data> data_base::obtain_between_ud_in_filesystem(
+	std::string const &pool_name,
+	std::string const &schema_name,
+	std::string const &table_name,
+	std::string const &lower_bound,
+	std::string const &upper_bound,
+	bool lower_bound_inclusive,
+	bool upper_bound_inclusive)
+{
+    std::filesystem::path pool_path = _instance_path / pool_name;
+
+    if (!std::filesystem::exists(pool_path) || !std::filesystem::is_directory(pool_path))
+    {
+	throw std::runtime_error("Could not find pool directory: " + pool_name);
+    }
+
+    std::filesystem::path schema_path = pool_path / schema_name;
+
+    if (!std::filesystem::exists(schema_path) || !std::filesystem::is_directory(schema_path))
+    {
+	throw std::runtime_error("Could not find schema directory: " + schema_name);
+    }
+
+    auto table_path = schema_path / (table_name + _file_format);
+    auto index_table_path = schema_path / ("index_" + table_name + _file_format);
+
+    if (!std::filesystem::exists(table_path))
+    {
+	throw std::runtime_error("Table file does not exist: " + table_path.string());
+    }
+
+    if (!std::filesystem::exists(index_table_path))
+    {
+	throw std::runtime_error("Index file does not exist: " + index_table_path.string());
+    }
+
+    return table::obtain_between_ud_in_filesystem(table_path, index_table_path, lower_bound, upper_bound, lower_bound_inclusive, upper_bound_inclusive);
+}
+
+void data_base::dispose_ud_in_filesystem(const std::string &pool_name, const std::string &schema_name, const std::string &table_name, const std::string &user_data_key)
+{
+    std::filesystem::path pool_path = _instance_path / pool_name;
+
+    if (!std::filesystem::exists(pool_path) || !std::filesystem::is_directory(pool_path))
+    {
+	throw std::runtime_error("Could not find pool directory: " + pool_name);
+    }
+
+    std::filesystem::path schema_path = pool_path / schema_name;
+
+    if (!std::filesystem::exists(schema_path) || !std::filesystem::is_directory(schema_path))
+    {
+	throw std::runtime_error("Could not find schema directory: " + schema_name);
+    }
+
+    auto table_path = schema_path / (table_name + _file_format);
+    auto index_table_path = schema_path / ("index_" + table_name + _file_format);
+
+    if (!std::filesystem::exists(table_path) || !std::filesystem::exists(index_table_path))
+    {
+	throw std::runtime_error("Could not obtain in undefined Table" + table_path.string());
+    }
+
+    table::dispose_ud_from_filesystem(table_path, index_table_path, user_data_key);
+}
+
+void data_base::execute_command_from_file(const std::string &filename)
+{
+    std::ifstream in_file(filename);
+    if (!in_file.is_open())
+    {
+	throw std::runtime_error("Cannot open file: " + filename);
+    }
+
+    std::string command;
+    while (std::getline(in_file, command))
+    {
+	std::istringstream iss(command);
+	std::string action, pool_name, schema_name, table_name, user_data_key, data;
+	std::string lower_bound, upper_bound;
+	bool lower_inclusive = false, upper_inclusive = false;
+
+	getline(iss, action, ':');
+	if (action == "insert_pool")
+	{
+	    getline(iss, pool_name, ':');
+	    schemas_pool pool;
+	    insert_schemas_pool(pool_name, std::move(pool));
+	}
+	else if (action == "insert_schema")
+	{
+	    getline(iss, pool_name, ':');
+	    getline(iss, schema_name, ':');
+	    schema schm;
+	    insert_schema(pool_name, schema_name, std::move(schm));
+	}
+	else if (action == "insert_table")
+	{
+	    getline(iss, pool_name, ':');
+	    getline(iss, schema_name, ':');
+	    getline(iss, table_name, ':');
+	    table tbl;
+	    insert_table(pool_name, schema_name, table_name, std::move(tbl));
+	}
+	else if (action == "insert_data")
+	{
+	    getline(iss, pool_name, ':');
+	    getline(iss, schema_name, ':');
+	    getline(iss, table_name, ':');
+	    getline(iss, user_data_key, ':');
+	    std::getline(iss, data);
+	    user_data ud;
+	    ud.create_user_data_from_str(data, ',');
+	    //TODO: !!!!!!!!!!!!create ud
+	    insert_data(pool_name, schema_name, table_name, user_data_key, ud);
+	}
+	else if (action == "obtain_data")
+	{
+	    getline(iss, pool_name, ':');
+	    getline(iss, schema_name, ':');
+	    getline(iss, table_name, ':');
+	    getline(iss, user_data_key, ':');
+	    user_data ud = obtain_data(pool_name, schema_name, table_name, user_data_key);
+	}
+	else if (action == "obtain_between_data")
+	{
+	    getline(iss, pool_name, ':');
+	    getline(iss, schema_name, ':');
+	    getline(iss, table_name, ':');
+	    getline(iss, lower_bound, ':');
+	    getline(iss, upper_bound, ':');
+	    iss >> lower_inclusive;
+	    iss.ignore(1);
+	    iss >> upper_inclusive;
+
+	    auto data_range = obtain_between_data(pool_name, schema_name, table_name, lower_bound, upper_bound, lower_inclusive, upper_inclusive);
+	    //TODO: output data;
+	}
+	else if (action == "update_data")
+	{
+	    getline(iss, pool_name, ':');
+	    getline(iss, schema_name, ':');
+	    getline(iss, table_name, ':');
+	    getline(iss, user_data_key, ':');
+	    std::getline(iss, data);
+	    user_data updated_ud;
+	    updated_ud.create_user_data_from_str(data, ',');
+	    update_data(pool_name, schema_name, table_name, user_data_key, std::move(updated_ud));
+	}
+	else if (action == "dispose_pool")
+	{
+	    getline(iss, pool_name, ':');
+	    dispose_schemas_pool(pool_name);
+	}
+	else if (action == "dispose_schema")
+	{
+	    getline(iss, pool_name, ':');
+	    getline(iss, schema_name, ':');
+	    dispose_schema(pool_name, schema_name);
+	}
+	else if (action == "dispose_table")
+	{
+	    getline(iss, pool_name, ':');
+	    getline(iss, schema_name, ':');
+	    getline(iss, table_name, ':');
+	    dispose_table(pool_name, schema_name, table_name);
+	}
+	else if (action == "dispose_data")
+	{
+	    getline(iss, pool_name, ':');
+	    getline(iss, schema_name, ':');
+	    getline(iss, table_name, ':');
+	    getline(iss, user_data_key, ':');
+	    dispose_user_data(pool_name, schema_name, table_name, user_data_key);
 	}
 	else
 	{
-	    right = mid - 1;
+	    std::cerr << "Unknown command: " << action << std::endl;
 	}
     }
 
-    main_file.close();
-    throw std::logic_error("key not found in file");
+    in_file.close();
 }
 
-void data_base::insert_pool_to_filesystem(std::string const &pool_name, schemas_pool const &value)
+void data_base::start_console_dialog()
 {
-
-}
-
-void data_base::insert_pool_to_filesystem(std::string const &pool_name, schemas_pool &&value)
-{
-    if (get_strategy() == storage_strategy::in_memory)
+    std::string command;
+    int uncknown_command_counter = 0;
+    std::cout << "Session started" << std::endl;
+    while (true)
     {
-	throw std::logic_error("incorrect strategy");
-    }
+	std::cout << "Input operation from list: \n[1] insert_pool; [2] insert_schema; [3] insert_table \n[4] dispose_pool; "
+		  << "[5] dispose_schema; [6] dispose_table \n[7] insert_data; [8] dispose_data; [9] obtain_data\n[10] obtain_between_data "
+		  << "[11] update_data [12] exit\n[13] execute_file_command" << std::endl;
 
-    std::string out_str = pool_name + "#";
-    length_alignment(out_str);
-
-    auto filename = data_base::_absolute_directory_name + get_instance_name() + _file_format;
-    auto index_filename = data_base::_absolute_directory_name + "index_" + get_instance_name() + _file_format;
-
-    std::ifstream test_exist(filename);
-    if (!test_exist)
-    {
-	std::ofstream new_file(filename);
-	std::vector<std::streamoff> new_index_array = {0};
-	if (!new_file)
+	std::cin >> command;
+	if (command.empty())
 	{
-	    throw std::logic_error("Cannot create a new file");
+	    std::cout << "Request could not be an empty !" << std::endl;
+	    continue;
 	}
 
-	new_file << out_str << std::endl;
-	new_file.close();
-	save_index(new_index_array, index_filename);
-	return;
-    }
-    test_exist.close();
-
-    auto index_array = load_index(index_filename);
-    if (index_array.empty())
-    {
-	std::ofstream src(filename);
-	throw_if_not_open(src);
-	src << out_str << std::endl;
-	src.close();
-	update_index(index_array);
-	save_index(index_array, index_filename);
-	return;
-    }
-
-    std::ifstream data_file(filename);
-    throw_if_not_open(data_file);
-
-    size_t left = 0;
-    size_t right = index_array.size() - 1;
-    std::string file_key;
-    while (left <= right)
-    {
-	size_t mid = left + (right - left) / 2;
-
-	data_file.seekg(index_array[mid]);
-
-	std::getline(data_file, file_key, '#');
-
-	if (file_key == pool_name)
+	if (uncknown_command_counter > 4)
 	{
-	    data_file.close();
-	    throw std::logic_error("duplicate key");
+	    std::cerr << "Suspicious activity. Too many wrong commands." << std::endl;
+	    break;
 	}
 
-	if (right == left)
+	if (command == "exit")
 	{
 	    break;
 	}
 
-	if (file_key < pool_name)
+	std::istringstream iss(command);
+	std::string action;
+
+	getline(iss, action, ':');
+	if (action == "insert_pool")
 	{
-	    left = mid + 1;
+	    std::string pool_name;
+	    std::cout << "Enter the name of the schema pool: ";
+	    std::cin >> pool_name;
+	    try
+	    {
+		schemas_pool pool;
+		insert_schemas_pool(pool_name, std::move(pool));
+		std::cout << "Schema pool added successfully." << std::endl;
+	    }
+	    catch (const std::exception &e)
+	    {
+		std::cerr << "Error inserting schema pool: " << e.what() << std::endl;
+	    }
+	}
+	else if (action == "insert_schema")
+	{
+	    std::string pool_name, schema_name;
+	    std::cout << "Enter the name of the schema pool: ";
+	    std::cin >> pool_name;
+	    std::cout << "Enter the schema name: ";
+	    std::cin >> schema_name;
+	    try
+	    {
+		schema schm;
+		insert_schema(pool_name, schema_name, std::move(schm));
+		std::cout << "Schema added successfully." << std::endl;
+	    }
+	    catch (const std::exception &e)
+	    {
+		std::cerr << "Error inserting schema: " << e.what() << std::endl;
+	    }
+	}
+	else if (action == "insert_table")
+	{
+	    std::string pool_name, schema_name, table_name;
+	    read_path_to_table(pool_name, schema_name, table_name);
+	    try
+	    {
+		table tbl;
+		insert_table(pool_name, schema_name, table_name, std::move(tbl));
+		std::cout << "Table added successfully." << std::endl;
+	    }
+	    catch (const std::exception &e)
+	    {
+		std::cerr << "Error inserting table: " << e.what() << std::endl;
+	    }
+	}
+	else if (action == "dispose_pool")
+	{
+	    std::string pool;
+	    std::cout << "Enter the name of the schema pool to delete: ";
+	    std::cin >> pool;
+	    try
+	    {
+		dispose_schemas_pool(pool);
+		std::cout << "Schema pool removed successfully." << std::endl;
+	    }
+	    catch (const std::exception &e)
+	    {
+		std::cerr << "Error removing schema pool: " << e.what() << std::endl;
+	    }
+	}
+	else if (action == "insert_data")
+	{
+	    std::string pool_name, schema_name, table_name, user_data_key, data;
+	    read_path_to_table_and_key(pool_name, schema_name, table_name, user_data_key);
+	    std::string str_id, str_name, str_surname;
+	    read_user_data(str_id, str_name, str_surname);
+
+	    try
+	    {
+		user_data ud(std::stol(str_id), str_name, str_surname);
+		insert_data(pool_name, schema_name, table_name, user_data_key, std::move(ud));
+		std::cout << "Data has been successfully added." << std::endl;
+	    }
+	    catch (const std::exception &e)
+	    {
+		std::cerr << "Error inserting data: " << e.what() << std::endl;
+	    }
+	}
+	else if (action == "obtain_data")
+	{
+	    std::string pool_name, schema_name, table_name, user_data_key;
+	    read_path_to_table_and_key(pool_name, schema_name, table_name, user_data_key);
+	    try
+	    {
+		user_data ud = obtain_data(pool_name, schema_name, table_name, user_data_key);
+		std::cout << "\nData obtained: " << ud.to_string() << "\n";
+		std::cout << std::endl;
+	    }
+	    catch (const std::exception &e)
+	    {
+		std::cerr << "Error obtaining data: " << e.what() << std::endl;
+	    }
+	}
+	else if (action == "obtain_between_data")
+	{
+	    std::string pool_name, schema_name, table_name, lower_bound, upper_bound;
+	    bool lower_inclusive, upper_inclusive;
+	    read_path_to_table(pool_name, schema_name, table_name);
+	    std::cout << "Enter the lower bound: ";
+	    std::cin >> lower_bound;
+	    std::cout << "Inclusive? (1 - yes, 0 - no): ";
+	    std::cin >> lower_inclusive;
+	    std::cin.ignore();
+	    std::cout << "Enter the upper bound: ";
+	    std::cin >> upper_bound;
+	    std::cout << "Inclusive? (1 - yes, 0 - no): ";
+	    std::cin >> upper_inclusive;
+	    std::cin.ignore();
+
+	    try
+	    {
+		auto data_range = obtain_between_data(pool_name, schema_name, table_name, lower_bound, upper_bound, lower_inclusive, upper_inclusive);
+		std::cout << "Range data obtained:\n";
+		for (const auto &ud: data_range)
+		{
+		    std::cout << "key: " << ud.first << "; value: " << ud.second.to_string() << std::endl;
+		}
+	    }
+	    catch (const std::exception &e)
+	    {
+		std::cerr << "Error obtaining data in range: " << e.what() << std::endl;
+	    }
+	}
+	else if (action == "update_data")
+	{
+	    std::string pool_name, schema_name, table_name, user_data_key, data;
+	    read_path_to_table_and_key(pool_name, schema_name, table_name, user_data_key);
+	    std::string str_id, str_name, str_surname;
+	    read_user_data(str_id, str_name, str_surname);
+
+	    try
+	    {
+		user_data ud(std::stol(str_id), str_name, str_surname);
+		update_data(pool_name, schema_name, table_name, user_data_key, std::move(ud));
+		std::cout << "Data updated successfully." << std::endl;
+	    }
+	    catch (const std::exception &e)
+	    {
+		std::cerr << "Error updating data: " << e.what() << std::endl;
+	    }
+	}
+	else if (action == "dispose_schema")
+	{
+	    std::string pool_name, schema_name;
+	    std::cout << "Enter the name of the schema pool: ";
+	    std::cin >> pool_name;
+	    std::cout << "Enter the name of the schema to delete: ";
+	    std::cin >> schema_name;
+	    if (pool_name.empty() || schema_name.empty())
+	    {
+		std::cerr << "The schema pool name and schema name cannot be empty." << std::endl;
+		continue;
+	    }
+	    try
+	    {
+		dispose_schema(pool_name, schema_name);
+		std::cout << "Schema removed successfully." << std::endl;
+	    }
+	    catch (const std::exception &e)
+	    {
+		std::cerr << "Error removing schema: " << e.what() << std::endl;
+	    }
+	}
+	else if (action == "dispose_table")
+	{
+	    std::string pool_name, schema_name, table_name;
+	    read_path_to_table(pool_name, schema_name, table_name);
+	    if (pool_name.empty() || schema_name.empty() || table_name.empty())
+	    {
+		std::cerr << "The names of the schema pool, schema, and table cannot be empty." << std::endl;
+		continue;
+	    }
+	    try
+	    {
+		dispose_table(pool_name, schema_name, table_name);
+		std::cout << "Table removed successfully." << std::endl;
+	    }
+	    catch (const std::exception &e)
+	    {
+		std::cerr << "Error removing table: " << e.what() << std::endl;
+	    }
+	}
+	else if (action == "dispose_data")
+	{
+	    std::string pool_name, schema_name, table_name, user_data_key;
+	    read_path_to_table_and_key(pool_name, schema_name, table_name, user_data_key);
+	    try
+	    {
+		dispose_user_data(pool_name, schema_name, table_name, user_data_key);
+		std::cout << "Data removed successfully." << std::endl;
+	    }
+	    catch (const std::exception &e)
+	    {
+		std::cerr << "Error removing data: " << e.what() << std::endl;
+	    }
+	}
+	else if (action == "execute_file_command")
+	{
+	    std::string filename;
+	    std::cout << "Enter the path to command filename: " << std::endl;
+	    std::cin >> filename;
+	    try
+	    {
+		this->execute_command_from_file(filename);
+		std::cout << "Operation finished successfully" << std::endl;
+	    }
+	    catch (std::exception const &e)
+	    {
+		std::cerr << "Execution command file faied: " << e.what() << std::endl;
+	    }
 	}
 	else
 	{
-	    right = mid;
+	    ++uncknown_command_counter;
+	    std::cerr << "Unknown command: " << action << std::endl;
 	}
     }
-
-    bool is_target_greater = file_key < pool_name;
-
-    std::string temp_filename = schemas_pool::_absolute_directory_name + std::string{"temp"} + _file_format;
-
-    data_file.close();
-
-    if (left == index_array.size() - 1 && is_target_greater)
-    {
-	std::ofstream data_file(filename, std::ios::app);
-	table::throw_if_not_open(data_file);
-	data_file << out_str << std::endl;
-	data_file.close();
-	table::update_index(index_array);
-	table::save_index(index_array, index_filename);
-	return;
-    }
-
-    std::ifstream src(filename);
-    table::throw_if_not_open(src);
-    std::ofstream tmp_file(temp_filename);
-    table::throw_if_not_open(tmp_file);
-
-    std::string src_line;
-    size_t pos;
-    while (std::getline(src, src_line))
-    {
-	pos = src_line.find('#');
-	if (pos != std::string::npos)
-	{
-	    std::string current_key = src_line.substr(0, pos);
-	    if (current_key == file_key)
-	    {
-		if (is_target_greater)
-		{
-		    tmp_file << src_line << std::endl;
-		    tmp_file << out_str << std::endl;
-		}
-		else
-		{
-		    tmp_file << out_str << std::endl;
-		    tmp_file << src_line << std::endl;
-		}
-
-		continue;
-	    }
-	}
-
-	tmp_file << src_line << std::endl;
-    }
-
-    update_index(index_array);
-    save_index(index_array, index_filename);
-    data_file.close();
-    tmp_file.close();
-
-    //TODO: copy temp to src;
-    std::string backup_filename = schemas_pool::_absolute_directory_name + "backup_" + get_instance_name() + _file_format;
-
-    {
-	std::ifstream src_orig(filename);
-	table::throw_if_not_open(src_orig);
-	std::ofstream backup_file(backup_filename, std::ios::trunc);
-	table::throw_if_not_open(backup_file);
-	backup_file << src_orig.rdbuf();
-	src_orig.close();
-	backup_file.close();
-    }
-
-    bool copy_success = true;
-
-    try
-    {
-	std::ifstream temp_file(temp_filename, std::ios::binary);
-	table::throw_if_not_open(temp_file);
-
-	std::ofstream final_data_file(filename, std::ios::binary | std::ios::trunc);
-	table::throw_if_not_open(final_data_file);
-
-	final_data_file << temp_file.rdbuf();
-
-	if (!temp_file.good() || !final_data_file.good())
-	{
-	    copy_success = false;
-	}
-
-	temp_file.close();
-	final_data_file.close();
-    }
-    catch (...)
-    {
-	copy_success = false;
-    }
-
-    if (copy_success)
-    {
-	//TODO: back-up logic!! Need to implementation
-	if (remove(temp_filename.c_str()) != 0 || remove(backup_filename.c_str()) != 0)
-	{
-	    warning_with_guard("puc puc puc, removing backup or temp file went wrong :(");
-	}
-    }
-    else
-    {
-	//restoring file from back-up
-	std::ifstream backup_file(backup_filename, std::ios::binary);
-	table::throw_if_not_open(backup_file);
-	std::ofstream src_file(filename, std::ios::binary | std::ios::trunc);
-	table::throw_if_not_open(src_file);
-	src_file << backup_file.rdbuf();
-
-	if (!backup_file.good() || !src_file.good())
-	{
-	    throw std::logic_error("smth went wrong puc puc..; back up went wrong");
-	}
-
-	backup_file.close();
-	src_file.close();
-    }
+    std::cout << "Session finished." << std::endl;
 }
+void data_base::read_path_to_table(std::string &pool_name, std::string &schema_name, std::string &table_name)
+{
+    std::cout << "Enter the schema pool name: ";
+    std::cin >> pool_name;
+    std::cout << "Enter the schema name: ";
+    std::cin >> schema_name;
+    std::cout << "Enter the table name: ";
+    std::cin >> table_name;
+}
+
+void data_base::read_path_to_table_and_key(std::string &pool_name, std::string &schema_name, std::string &table_name, std::string &ud_key)
+{
+    read_path_to_table(pool_name, schema_name, table_name);
+    std::cout << "Enter the user data key: ";
+    std::cin >> ud_key;
+}
+
+void data_base::read_user_data(std::string &str_id, std::string &str_name, std::string &str_surname)
+{
+    std::cout << "Enter the id: ";
+    std::cin >> str_id;
+    std::cout << "Enter the name: ";
+    std::cin >> str_name;
+    std::cout << "Enter the surname: ";
+    std::cin >> str_surname;
+}
+
+

@@ -8,8 +8,11 @@
 #define SIZEOF_NEXT_LINE_SYMB 2
 
 #include "../../../associative_container/include/associative_container.h"
+#include "../../user_data/include/user_data.h"
+#include <filesystem>
 #include <fstream>
 #include <memory>
+#include <sstream>
 #include <vector>
 
 template<
@@ -20,6 +23,9 @@ class storage_interface : public logger_guardant,
 {
 
 protected:
+
+    inline static std::string _additional_storage = "in_memory_storage";
+
     inline static const size_t max_data_length = 40;
 
     inline static const size_t index_item_max_length = max_data_length + SIZEOF_NEXT_LINE_SYMB;
@@ -101,6 +107,8 @@ protected:
 
     static void save_index(const std::vector<std::streamoff> &vec, const std::string &filename);
 
+    static void save_index(std::vector<std::streamoff> const &vec, std::ofstream &file);
+
     static void update_index(std::vector<std::streamoff> &vec);
 
     static void decrease_index(std::vector<std::streamoff> &vec);
@@ -109,7 +117,17 @@ protected:
 
     static void throw_if_not_open(const std::ifstream &file);
 
+    static void dispose_from_filesystem(const std::filesystem::path &data_path, const std::filesystem::path &index_path, const std::string &key);
+
     static int get_index_by_bin_search(std::ifstream &src, const std::vector<std::streamoff> &index_array, const std::string &key);
+
+    static user_data obtain_in_filesystem(const std::filesystem::path &data_path, const std::filesystem::path &index_path, const std::string &key);
+
+    static void load_backup(const std::filesystem::path &source_path);
+
+    static void delete_backup(const std::filesystem::path &source_path);
+
+    static void create_backup(const std::filesystem::path &source_path);
 };
 
 template<typename tkey, typename tvalue>
@@ -179,6 +197,7 @@ void storage_interface<tkey, tvalue>::throw_if_not_open(std::ofstream const &fil
 	throw std::runtime_error("file did not open!00!!))!1!!!");
     }
 }
+
 template<typename tkey, typename tvalue>
 void storage_interface<tkey, tvalue>::decrease_index(std::vector<std::streamoff> &vec)
 {
@@ -188,6 +207,164 @@ void storage_interface<tkey, tvalue>::decrease_index(std::vector<std::streamoff>
     }
 
     vec.pop_back();
+}
+
+template <typename tkey, typename tvalue>
+void storage_interface<tkey, tvalue>::load_backup(const std::filesystem::path &source_path)
+{
+
+    std::filesystem::path backup_path = source_path;
+    backup_path += ".backup";
+
+    if (!std::filesystem::exists(backup_path))
+    {
+	throw std::runtime_error("Load backup file failed. Backup file does not exist: " + backup_path.string());
+    }
+
+    try
+    {
+	std::filesystem::path temp_backup_path = backup_path;
+	temp_backup_path += ".tmp";
+	std::filesystem::copy(backup_path, temp_backup_path);
+
+	if (std::filesystem::exists(source_path))
+	{
+	    std::filesystem::remove(source_path);
+	}
+
+	std::filesystem::rename(temp_backup_path, source_path);
+    }
+    catch (...)
+    {
+
+	if (std::filesystem::exists(source_path))
+	{
+	    std::filesystem::remove(source_path);
+	}
+	std::filesystem::path temp_backup_path = backup_path;
+	temp_backup_path += ".tmp";
+	if (std::filesystem::exists(temp_backup_path))
+	{
+	    std::filesystem::rename(temp_backup_path, source_path);
+	}
+	throw;
+    }
+
+    std::filesystem::path temp_backup_path = backup_path;
+    temp_backup_path += ".tmp";
+    if (std::filesystem::exists(temp_backup_path))
+    {
+	std::filesystem::remove(temp_backup_path);
+    }
+}
+
+template <typename tkey, typename tvalue>
+void storage_interface<tkey, tvalue>::delete_backup(const std::filesystem::path &source_path)
+{
+    std::filesystem::path backup_path = source_path;
+    backup_path += ".backup";
+
+    if (std::filesystem::exists(backup_path))
+    {
+	try
+	{
+	    std::filesystem::remove(backup_path);
+	}
+	catch (const std::filesystem::filesystem_error &e)
+	{
+	    throw std::runtime_error("Failed to delete backup file: " + backup_path.string() + ". Error: " + e.what());
+	}
+    }
+    else
+    {
+	throw std::runtime_error("Backup file does not exist: " + backup_path.string());
+    }
+}
+
+template <typename tkey, typename tvalue>
+void storage_interface<tkey, tvalue>::create_backup(const std::filesystem::path &source_path)
+{
+    if (!std::filesystem::exists(source_path))
+    {
+	throw std::runtime_error("Source file does not exist: " + source_path.string());
+    }
+
+    std::filesystem::path backup_path = source_path;
+    backup_path += ".backup";
+
+    std::ifstream src_orig(source_path, std::ios::binary);
+    throw_if_not_open(src_orig);
+
+    std::ofstream backup_file(backup_path, std::ios::trunc | std::ios::binary);
+    if (!backup_file.is_open())
+    {
+	src_orig.close();
+	throw std::runtime_error("Failed to create backup file: " + backup_path.string());
+    }
+
+    backup_file << src_orig.rdbuf();
+
+    src_orig.close();
+    backup_file.close();
+}
+
+
+template<typename tkey, typename tvalue>
+user_data storage_interface<tkey, tvalue>::obtain_in_filesystem(const std::filesystem::path &data_path, const std::filesystem::path &index_path, const std::string &key) {
+//TODO: MDAAA 0 1 ind FAILED!!!
+    std::vector<std::streamoff> index_array = load_index(index_path.string());
+
+    if (index_array.empty())
+    {
+	throw std::logic_error("Target file is empty :((");
+    }
+
+    std::ifstream data_file(data_path);
+    throw_if_not_open(data_file);
+
+    size_t left = 0;
+    size_t right = index_array.size() - 1;
+
+    while (left <= right)
+    {
+	size_t mid = left + (right - left) / 2;
+
+	data_file.seekg(index_array[mid]);
+
+	std::string file_key;
+	std::getline(data_file, file_key, '#');
+	if (key == file_key)
+	{
+	    std::string user_info;
+	    std::getline(data_file, user_info, '|');
+	    std::istringstream iss(user_info);
+	    std::string id_str, name, surname;
+
+	    std::getline(iss, id_str, '#');
+	    std::getline(iss, name, '#');
+	    std::getline(iss, surname, '#');
+
+	    size_t id = std::stoul(id_str);
+
+	    return user_data(id, name, surname);
+	}
+
+	if (right == left)
+	{
+	    break;
+	}
+	if (file_key < key)
+	{
+	    left = mid + 1;
+	}
+	else
+	{
+	    right = mid;
+	}
+    }
+
+    data_file.close();
+    throw std::logic_error("key not found");
 }
 
 template<typename tkey, typename tvalue>
@@ -200,6 +377,16 @@ void storage_interface<tkey, tvalue>::update_index(std::vector<std::streamoff> &
     }
 
     vec.push_back(vec.back() + index_item_max_length);
+}
+
+template<typename tkey, typename tvalue>
+void storage_interface<tkey, tvalue>::save_index(std::vector<std::streamoff> const &vec, std::ofstream &file)
+{
+    throw_if_not_open(file);
+
+    size_t size = vec.size();
+    file << size << "#" << std::endl;
+
 }
 
 template<typename tkey, typename tvalue>

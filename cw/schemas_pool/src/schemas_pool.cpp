@@ -151,9 +151,7 @@ schemas_pool schemas_pool::load_schemas_pool_from_filesystem(const std::string &
     return new_pool;
 }
 
-/*
- * TODO: Create logic to load-save META-data from class besides _data(b-tree)
- */
+
 void schemas_pool::save_schemas_pool_to_filesystem(const std::string &filename)
 {
     std::string filename_copy = filename.length() == 0 ? this->_instance_name + _file_format : filename;
@@ -181,6 +179,7 @@ void schemas_pool::save_schemas_pool_to_filesystem(const std::string &filename)
 
     output_file.close();
 }
+
 void schemas_pool::serialize()
 {
 }

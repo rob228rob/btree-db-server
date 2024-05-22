@@ -1,7 +1,6 @@
-#include "allocator_boundary_tags.h"
+#include "../include/allocator_boundary_tags.h"
 #include <in6addr.h>
 #include <mutex>
-#include <not_implemented.h>
 #include <regex>
 
 allocator_boundary_tags::~allocator_boundary_tags()
@@ -191,6 +190,7 @@ allocator_boundary_tags::allocator_boundary_tags(
 	    size_free_block = reinterpret_cast<u_char *>(get_memory_begining()) + global_size -
 			      ((reinterpret_cast<u_char *>(prev_block) + get_block_meta_size() +
 				get_block_size(prev_block)));
+
 	}
 
 	pointer_free_block = reinterpret_cast<void *>(reinterpret_cast<u_char *>(prev_block) + get_block_meta_size() +
@@ -233,6 +233,10 @@ allocator_boundary_tags::allocator_boundary_tags(
 	}
 
 	prev_block = current_block;
+	if (prev_block == nullptr)
+	{
+	    break;
+	}
 	current_block = get_next_block_adress(current_block);
     }
 

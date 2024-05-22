@@ -4,13 +4,14 @@
 
 #include "../include/table.h"
 #include "../../common/include/storage_interface.h"
+#include <filesystem>
 #include <fstream>
 #include <functional>
 #include <sstream>
 
 std::function<int(const std::string &, const std::string &)> table::_default_string_comparer = [](const std::string &a, const std::string &b) -> int { return a.compare(b); };
 
-table::table() : _data(std::make_unique<b_tree<std::string, user_data>>(4, _default_string_comparer, nullptr, nullptr))
+table::table() : _data(std::make_unique<b_tree<std::string, user_data>>(2, _default_string_comparer, nullptr, nullptr))
 {
     set_instance_name("table_name");
     this->_logger = nullptr;
@@ -42,7 +43,7 @@ table::table(
     if (this->_storaged_strategy == storage_interface<std::string, user_data>::storage_strategy::in_memory)
     {
 	//trace_with_guard("data was deserialized");
-	table::deserialize();
+	//table::deserialize();
     }
 }
 
@@ -52,7 +53,7 @@ table::~table()
     if (this->_storaged_strategy == storage_interface<std::string, user_data>::storage_strategy::in_memory)
     {
 	trace_with_guard("data was serialized after desctructor called");
-	table::serialize();
+	//table::serialize();
     }
 }
 
@@ -285,7 +286,11 @@ void table::insert_to_filesystem(std::string const &key, const user_data &value)
 	throw_if_not_open(temp_file);
 
 	std::ofstream final_data_file(filename, std::ios::binary | std::ios::trunc);
-	throw_if_not_open(final_data_file);
+	if (!final_data_file.is_open())
+	{
+	    temp_file.close();
+	    throw_if_not_open(final_data_file);
+	}
 
 	final_data_file << temp_file.rdbuf();
 
@@ -316,7 +321,11 @@ void table::insert_to_filesystem(std::string const &key, const user_data &value)
 	std::ifstream backup_file(backup_filename, std::ios::binary);
 	throw_if_not_open(backup_file);
 	std::ofstream src_file(filename, std::ios::binary | std::ios::trunc);
-	throw_if_not_open(src_file);
+	if (!src_file.is_open())
+	{
+	    backup_file.close();
+	    throw_if_not_open(src_file);
+	}
 	src_file << backup_file.rdbuf();
 
 	if (!backup_file.good() || !src_file.good())
@@ -360,6 +369,65 @@ void table::copy_file(const std::string &source_path, const std::string &dest_pa
 
     source_file.close();
     dest_file.close();
+}
+
+void table::update_ud_in_filesystem(std::filesystem::path const &table_path, std::filesystem::path const &index_table_path, std::string const &user_data_key, user_data &&value)
+{
+    std::string out_str = user_data_key + "#" + std::to_string(value.get_id()) + "#" + value.get_name() + "#" + value.get_surname() + "|";
+    length_alignment(out_str);
+
+    std::vector<std::streamoff> index_array = load_index(index_table_path.string());
+
+    std::fstream target_file(table_path, std::ios::in | std::ios::out);
+    if (!target_file.is_open())
+    {
+	throw std::runtime_error("file did not open, sorry ^(");
+    }
+
+    size_t left = 0;
+    size_t right = index_array.size() - 1;
+    std::string file_key;
+    while (left <= right)
+    {
+	size_t mid = left + (right - left) / 2;
+	target_file.seekg(index_array[mid]);
+	std::getline(target_file, file_key, '#');
+
+	if (user_data_key == file_key)
+	{
+	    create_backup(table_path);
+	    try
+	    {
+		target_file.seekg(index_array[mid]);
+		target_file << out_str;
+		target_file.close();
+		delete_backup(table_path);
+		return;
+	    }
+	    catch (...)
+	    {
+		target_file.close();
+		load_backup(table_path);
+		throw;
+	    }
+	}
+
+	if (right == left)
+	{
+	    break;
+	}
+	if (file_key < user_data_key)
+	{
+	    left = mid + 1;
+	}
+	else
+	{
+	    right = mid;
+	}
+    }
+
+    target_file.close();
+    throw std::logic_error("key not found: " + file_key);
 }
 
 void table::update_in_filesystem(std::string const &key, user_data &&value)
@@ -419,15 +487,16 @@ void table::update_in_filesystem(std::string const &key, user_data &&value)
 
 
     target_file.close();
-    throw std::logic_error("key not found");
+    throw std::logic_error("key not found: " + key);
 }
 
 void table::update_in_filesystem(std::string const &key, user_data const &value)
 {
-    update_in_filesystem(key,user_data(value.get_id(), value.get_name(), value.get_surname()));
+    update_in_filesystem(key, user_data(value.get_id(), value.get_name(), value.get_surname()));
 }
 
-user_data table::create_user_data(const std::string &ud_line) {
+user_data table::create_user_data(const std::string &ud_line)
+{
     if (ud_line.empty())
     {
 	throw std::logic_error("attempt to map empty line");
@@ -486,7 +555,117 @@ int table::get_index_by_bin_search(std::ifstream &src, std::vector<std::streamof
     return -1;
 }
 
-std::map<std::string , user_data> table::obtain_between_in_filesystem(
+std::map<std::string, user_data> table::obtain_between_ud_in_filesystem(
+	std::filesystem::path const &filepath,
+	std::filesystem::path const &index_filepath,
+	std::string const &lower_bound,
+	std::string const &upper_bound,
+	bool lower_bound_inclusive,
+	bool upper_bound_inclusive)
+{
+    if (upper_bound < lower_bound)
+    {
+	throw std::logic_error("upper bound less than lower?? puc puc..");
+    }
+
+    std::vector<std::streamoff> index_array = load_index(index_filepath.string());
+
+    std::ifstream data_file(filepath);
+    throw_if_not_open(data_file);
+
+    size_t left = 0;
+    size_t right = index_array.size() - 1;
+    std::string file_key;
+    bool is_lower_found = false;
+    while (left <= right)
+    {
+	size_t mid = left + (right - left) / 2;
+	data_file.seekg(index_array[mid]);
+	std::getline(data_file, file_key, '#');
+
+	if (lower_bound == file_key)
+	{
+	    left = mid;
+	    is_lower_found = true;
+	    break;
+	}
+	if (right == left)
+	{
+	    break;
+	}
+	if (file_key < lower_bound)
+	{
+	    left = mid + 1;
+	}
+	else
+	{
+	    right = mid - 1;
+	}
+    }
+
+    if (!is_lower_found && left >= index_array.size() - 1)
+    {
+	data_file.close();
+	throw std::logic_error("left bound is not exist");
+    }
+
+    size_t start_index = is_lower_found && (lower_bound_inclusive) ? left : left + 1;
+    if (is_lower_found)
+    {
+	if (!lower_bound_inclusive)
+	{
+	    start_index = left + 1;
+	}
+	else
+	{
+	    start_index = left;
+	}
+    }
+    else
+    {
+	if (file_key > lower_bound)
+	{
+	    start_index = left;
+	}
+	else
+	{
+	    start_index = left + 1;
+	}
+    }
+
+    std::map<std::string, user_data> result;
+
+    std::string readln;
+    size_t pos;
+    data_file.seekg(index_array[start_index]);
+    while (std::getline(data_file, readln))
+    {
+	pos = readln.find('#');
+	if (pos != std::string::npos)
+	{
+	    std::string current_key = readln.substr(0, pos);
+
+	    if (current_key >= upper_bound)
+	    {
+		if (current_key == upper_bound && upper_bound_inclusive)
+		{
+		    auto data = create_user_data(readln);
+		    result.emplace(upper_bound, data);
+		}
+
+		break;
+	    }
+
+	    auto data = create_user_data(readln);
+	    result.emplace(current_key, data);
+	}
+    }
+
+    data_file.close();
+    return result;
+}
+
+std::map<std::string, user_data> table::obtain_between_in_filesystem(
 	const std::string &lower_bound,
 	const std::string &upper_bound,
 	bool lower_bound_inclusive,
@@ -549,7 +728,7 @@ std::map<std::string , user_data> table::obtain_between_in_filesystem(
 	throw std::logic_error("left bound is not exist");
     }
 
-    size_t start_index = is_lower_found && (lower_bound_inclusive) ? left : left + 1 ;
+    size_t start_index = is_lower_found && (lower_bound_inclusive) ? left : left + 1;
     if (is_lower_found)
     {
 	if (!lower_bound_inclusive)
@@ -606,23 +785,15 @@ std::map<std::string , user_data> table::obtain_between_in_filesystem(
     return result;
 }
 
-void table::dispose_from_filesystem(std::string const &key)
+void table::dispose_ud_from_filesystem(std::filesystem::path const &path, std::filesystem::path const &index_path, std::string const &key)
 {
-    if (get_strategy() != storage_strategy::filesystem)
-    {
-	throw std::logic_error("incorrect strategy for this method :((");
-    }
-
-    auto filename = table::_absolute_directory_name + get_instance_name() + _file_format;
-    auto index_filename = table::_absolute_directory_name + "index_" + get_instance_name() + _file_format;
-
-    std::vector<std::streamoff> index_array = load_index(index_filename);
+    std::vector<std::streamoff> index_array = load_index(index_path.string());
     if (index_array.empty())
     {
 	throw std::logic_error("Attemp to dispose from empty file");
     }
 
-    std::ifstream src(filename);
+    std::ifstream src(path);
     throw_if_not_open(src);
 
     size_t left = 0;
@@ -632,12 +803,8 @@ void table::dispose_from_filesystem(std::string const &key)
     while (left <= right)
     {
 	size_t mid = left + (right - left) / 2;
-
 	src.seekg(index_array[mid]);
-
-
 	std::getline(src, file_key, '#');
-
 	if (key == file_key)
 	{
 	    is_found = true;
@@ -647,7 +814,7 @@ void table::dispose_from_filesystem(std::string const &key)
 	if (right == left)
 	{
 	    src.close();
-	    throw std::logic_error("key not found");
+	    throw std::logic_error("key not found: " + key);
 	}
 	if (file_key < key)
 	{
@@ -655,113 +822,502 @@ void table::dispose_from_filesystem(std::string const &key)
 	}
 	else
 	{
-	    right = mid - 1;
+	    right = mid;
 	}
     }
+
+    create_backup(path);
 
     if (is_found && index_array.size() == 1)
     {
-	src.close();
-	std::ofstream clear_file(filename, std::ios::trunc);
-	throw_if_not_open(clear_file);
-	clear_file.close();
-	decrease_index(index_array);
-	save_index(index_array, index_filename);
-	return;
+	try
+	{
+	    src.close();
+	    std::ofstream clear_file(path, std::ios::trunc);
+	    throw_if_not_open(clear_file);
+	    clear_file.close();
+	    decrease_index(index_array);
+	    save_index(index_array, index_path.string());
+	    delete_backup(path);
+	    return;
+	}
+	catch (...)
+	{
+	    load_backup(path);
+	    throw;
+	}
     }
 
     src.seekg(0);
-    std::string temp_filename = _absolute_directory_name + std::string{"temp"} + _file_format;
-
-    std::ofstream tmp_file(temp_filename);
-    throw_if_not_open(tmp_file);
-
-    std::string src_line;
-    size_t pos;
-    while (std::getline(src, src_line))
-    {
-	pos = src_line.find('#');
-	if (pos != std::string::npos)
-	{
-	    std::string current_key = src_line.substr(0, pos);
-	    if (current_key == file_key)
-	    {
-		continue;
-	    }
-	}
-
-	tmp_file << src_line << std::endl;
-    }
-
-    index_array.pop_back();
-    save_index(index_array, index_filename);
-    src.close();
-    tmp_file.close();
-
-    //TODO: copy temp to src;
-
-    std::string backup_filename = _absolute_directory_name + "backup_" + get_instance_name() + _file_format;
-
-    {
-	std::ifstream src_orig(filename);
-	throw_if_not_open(src_orig);
-	std::ofstream backup_file(backup_filename, std::ios::trunc);
-	throw_if_not_open(backup_file);
-	backup_file << src_orig.rdbuf();
-	src_orig.close();
-	backup_file.close();
-    }
-
-    bool copy_success = true;
 
     try
     {
-	std::ifstream temp_file(temp_filename, std::ios::binary);
-	throw_if_not_open(temp_file);
+	auto temp_filename = path.string() + (std::string{"temp"} + _file_format);
 
-	std::ofstream final_data_file(filename, std::ios::binary | std::ios::trunc);
-	throw_if_not_open(final_data_file);
+	std::ofstream tmp_file(temp_filename);
+	throw_if_not_open(tmp_file);
 
-	final_data_file << temp_file.rdbuf();
-
-	if (!temp_file.good() || !final_data_file.good())
+	std::string src_line;
+	size_t pos;
+	while (std::getline(src, src_line))
 	{
-	    copy_success = false;
+	    pos = src_line.find('#');
+	    if (pos != std::string::npos)
+	    {
+		std::string current_key = src_line.substr(0, pos);
+		if (current_key == file_key)
+		{
+		    continue;
+		}
+	    }
+
+	    tmp_file << src_line << std::endl;
 	}
 
-	temp_file.close();
-	final_data_file.close();
+	index_array.pop_back();
+	save_index(index_array, index_path.string());
+	src.close();
+	tmp_file.close();
+
+	std::filesystem::remove(path);
+	std::filesystem::rename(temp_filename, path);
     }
     catch (...)
     {
-	copy_success = false;
+	load_backup(path);
+	throw;
     }
 
-    if (copy_success)
+    delete_backup(path);
+}
+
+void table::insert_ud_to_filesystem(std::filesystem::path const &path, std::filesystem::path const &index_path, std::string const &key, user_data const &ud)
+{
+    std::string out_str = key + "#" + std::to_string(ud.get_id()) + "#" + ud.get_name() + "#" + ud.get_surname() + "|";
+    length_alignment(out_str);
+
+    if (check_and_create_with_insertion(path, index_path, out_str))
     {
-	//TODO: back-up logic!! Need to implementation
-	if (remove(temp_filename.c_str()) != 0 || remove(backup_filename.c_str()) != 0)
+	return;
+    }
+
+    auto index_array = load_index(index_path.string());
+
+    if (index_array.empty())
+    {
+	std::ofstream out_f(path);
+	throw_if_not_open(out_f);
+	std::ofstream index_f(index_path);
+	if (!index_f.is_open())
 	{
-	    warning_with_guard("puc puc puc, removing backup or temp file went wrong :(");
+	    out_f.close();
+	    throw_if_not_open(index_f);
+	}
+	out_f << out_str << std::endl;
+	out_f.close();
+	storage_interface::update_index(index_array);
+	storage_interface::save_index(index_array, index_f);
+	index_f.close();
+	return;
+    }
+
+    std::ifstream src(path);
+    throw_if_not_open(src);
+
+    size_t left = 0;
+    size_t right = index_array.size() - 1;
+    std::string file_key;
+    while (left <= right)
+    {
+	size_t mid = left + (right - left) / 2;
+	src.seekg(index_array[mid]);
+	std::getline(src, file_key, '#');
+	if (file_key == key)
+	{
+	    src.close();
+	    throw std::logic_error("duplicate key");
+	}
+
+	if (right == left)
+	{
+	    src.close();
+	    break;
+	}
+
+	if (file_key < key)
+	{
+	    left = mid + 1;
+	}
+	else
+	{
+	    right = mid;
+	}
+    }
+
+    create_backup(path);
+
+    bool is_target_greater = file_key < key;
+
+    if (left == index_array.size() - 1 && is_target_greater)
+    {
+	try
+	{
+	    std::ofstream data_file(path, std::ios::app);
+	    throw_if_not_open(data_file);
+	    data_file << out_str << std::endl;
+	    data_file.close();
+	    update_index(index_array);
+	    save_index(index_array, index_path.string());
+	}
+	catch (...)
+	{
+	    load_backup(path);
+	    throw;
+	}
+
+	delete_backup(path);
+	return;
+    }
+
+    try
+    {
+	std::ifstream data_file(path);
+	throw_if_not_open(data_file);
+	auto tmp_filename = path.string() + "_temp" + _file_format;
+	std::ofstream tmp_file(tmp_filename);
+	if (!tmp_file.is_open())
+	{
+	    data_file.close();
+	    throw_if_not_open(tmp_file);
+	}
+
+	std::string src_line;
+	size_t pos;
+	while (std::getline(data_file, src_line))
+	{
+	    pos = src_line.find('#');
+	    if (pos != std::string::npos)
+	    {
+		std::string current_key = src_line.substr(0, pos);
+		if (current_key == file_key)
+		{
+		    if (is_target_greater)
+		    {
+			tmp_file << src_line << std::endl;
+			tmp_file << out_str << std::endl;
+		    }
+		    else
+		    {
+			tmp_file << out_str << std::endl;
+			tmp_file << src_line << std::endl;
+		    }
+
+		    continue;
+		}
+	    }
+
+	    tmp_file << src_line << std::endl;
+	}
+
+	update_index(index_array);
+	save_index(index_array, index_path.string());
+	data_file.close();
+	tmp_file.close();
+
+	std::filesystem::remove(path);
+	std::filesystem::rename(tmp_filename, path);
+    }
+    catch (...)
+    {
+	load_backup(path);
+	throw;
+    }
+
+    delete_backup(path);
+}
+
+void table::insert_ud_to_filesystem(std::filesystem::path const &path, std::filesystem::path const &index_path, std::string const &key, user_data &&ud)
+{
+    std::string out_str = key + "#" + std::to_string(ud.get_id()) + "#" + ud.get_name() + "#" + ud.get_surname() + "|";
+    length_alignment(out_str);
+
+    if (check_and_create_with_insertion(path, index_path, out_str))
+    {
+	return;
+    }
+
+    auto index_array = load_index(index_path.string());
+
+    if (index_array.empty())
+    {
+	std::ofstream out_f(path);
+	throw_if_not_open(out_f);
+	std::ofstream index_f(index_path);
+	if (!index_f.is_open())
+	{
+	    out_f.close();
+	    throw_if_not_open(index_f);
+	}
+	out_f << out_str << std::endl;
+	out_f.close();
+	storage_interface::update_index(index_array);
+	storage_interface::save_index(index_array, index_f);
+	index_f.close();
+	return;
+    }
+
+    std::ifstream src(path);
+    throw_if_not_open(src);
+
+    size_t left = 0;
+    size_t right = index_array.size() - 1;
+    std::string file_key;
+    while (left <= right)
+    {
+	size_t mid = left + (right - left) / 2;
+	src.seekg(index_array[mid]);
+	std::getline(src, file_key, '#');
+	if (file_key == key)
+	{
+	    src.close();
+	    throw std::logic_error("duplicate key");
+	}
+
+	if (right == left)
+	{
+	    src.close();
+	    break;
+	}
+
+	if (file_key < key)
+	{
+	    left = mid + 1;
+	}
+	else
+	{
+	    right = mid;
+	}
+    }
+
+    create_backup(path);
+
+    bool is_target_greater = file_key < key;
+
+    if (left == index_array.size() - 1 && is_target_greater)
+    {
+	try
+	{
+	    std::ofstream data_file(path, std::ios::app);
+	    throw_if_not_open(data_file);
+	    data_file << out_str << std::endl;
+	    data_file.close();
+	    update_index(index_array);
+	    save_index(index_array, index_path.string());
+	}
+	catch (...)
+	{
+	    load_backup(path);
+	    throw;
+	}
+
+	delete_backup(path);
+	return;
+    }
+
+    try
+    {
+	std::ifstream data_file(path);
+	throw_if_not_open(data_file);
+	auto tmp_filename = path.string() + "_temp" + _file_format;
+	std::ofstream tmp_file(tmp_filename);
+	if (!tmp_file.is_open())
+	{
+	    data_file.close();
+	    throw_if_not_open(tmp_file);
+	}
+
+	std::string src_line;
+	size_t pos;
+	while (std::getline(data_file, src_line))
+	{
+	    pos = src_line.find('#');
+	    if (pos != std::string::npos)
+	    {
+		std::string current_key = src_line.substr(0, pos);
+		if (current_key == file_key)
+		{
+		    if (is_target_greater)
+		    {
+			tmp_file << src_line << std::endl;
+			tmp_file << out_str << std::endl;
+		    }
+		    else
+		    {
+			tmp_file << out_str << std::endl;
+			tmp_file << src_line << std::endl;
+		    }
+
+		    continue;
+		}
+	    }
+
+	    tmp_file << src_line << std::endl;
+	}
+
+	update_index(index_array);
+	save_index(index_array, index_path.string());
+	data_file.close();
+	tmp_file.close();
+
+	std::filesystem::remove(path);
+	std::filesystem::rename(tmp_filename, path);
+    }
+    catch (...)
+    {
+	load_backup(path);
+	throw;
+    }
+
+    delete_backup(path);
+}
+
+bool table::check_and_create_with_insertion(const std::filesystem::path &path, const std::filesystem::path &index_filename, const std::string &out_str)
+{
+
+    if (std::filesystem::exists(path))
+    {
+	return false;
+    }
+
+    std::ofstream new_file(path);
+    if (!new_file.is_open())
+    {
+	throw std::runtime_error("Cannot create a new file: " + path.string());
+    }
+    std::vector<std::streamoff> new_index_array = {0};
+    new_file << out_str << std::endl;
+    new_file.close();
+
+    save_index(new_index_array, index_filename.string());
+
+    return true;
+}
+
+bool table::check_and_create_empty(const std::filesystem::path &path, const std::filesystem::path &index_filename)
+{
+
+    if (std::filesystem::exists(path))
+    {
+	return false;
+    }
+
+    std::ofstream new_file(path, std::ios::out | std::ios::trunc);
+    if (!new_file.is_open())
+    {
+	throw std::runtime_error("Cannot create a new file: " + path.string());
+    }
+    std::vector<std::streamoff> new_index_array = {};
+    new_file.close();
+
+    save_index(new_index_array, index_filename.string());
+
+    return true;
+}
+
+void table::load_backup(const std::filesystem::path &source_path)
+{
+
+    std::filesystem::path backup_path = source_path;
+    backup_path += ".backup";
+
+    if (!std::filesystem::exists(backup_path))
+    {
+	throw std::runtime_error("Load backup file failed. Backup file does not exist: " + backup_path.string());
+    }
+
+    try
+    {
+	std::filesystem::path temp_backup_path = backup_path;
+	temp_backup_path += ".tmp";
+	std::filesystem::copy(backup_path, temp_backup_path);
+
+	if (std::filesystem::exists(source_path))
+	{
+	    std::filesystem::remove(source_path);
+	}
+
+	std::filesystem::rename(temp_backup_path, source_path);
+    }
+    catch (...)
+    {
+
+	if (std::filesystem::exists(source_path))
+	{
+	    std::filesystem::remove(source_path);
+	}
+	std::filesystem::path temp_backup_path = backup_path;
+	temp_backup_path += ".tmp";
+	if (std::filesystem::exists(temp_backup_path))
+	{
+	    std::filesystem::rename(temp_backup_path, source_path);
+	}
+	throw;
+    }
+
+    std::filesystem::path temp_backup_path = backup_path;
+    temp_backup_path += ".tmp";
+    if (std::filesystem::exists(temp_backup_path))
+    {
+	std::filesystem::remove(temp_backup_path);
+    }
+}
+
+void table::delete_backup(const std::filesystem::path &source_path)
+{
+    std::filesystem::path backup_path = source_path;
+    backup_path += ".backup";
+
+    if (std::filesystem::exists(backup_path))
+    {
+	try
+	{
+	    std::filesystem::remove(backup_path);
+	}
+	catch (const std::filesystem::filesystem_error &e)
+	{
+	    throw std::runtime_error("Failed to delete backup file: " + backup_path.string() + ". Error: " + e.what());
 	}
     }
     else
     {
-	//restoring file from back-up
-	std::ifstream backup_file(backup_filename, std::ios::binary);
-	throw_if_not_open(backup_file);
-	std::ofstream src_file(filename, std::ios::binary | std::ios::trunc);
-	throw_if_not_open(src_file);
-	src_file << backup_file.rdbuf();
-
-	if (!backup_file.good() || !src_file.good())
-	{
-	    throw std::logic_error("smth went wrong puc puc..; back up went wrong");
-	}
-
-	backup_file.close();
-	src_file.close();
+	throw std::runtime_error("Backup file does not exist: " + backup_path.string());
     }
+}
+
+void table::create_backup(const std::filesystem::path &source_path)
+{
+    if (!std::filesystem::exists(source_path))
+    {
+	throw std::runtime_error("Source file does not exist: " + source_path.string());
+    }
+
+    std::filesystem::path backup_path = source_path;
+    backup_path += ".backup";
+
+    std::ifstream src_orig(source_path, std::ios::binary);
+    throw_if_not_open(src_orig);
+
+    std::ofstream backup_file(backup_path, std::ios::trunc | std::ios::binary);
+    if (!backup_file.is_open())
+    {
+	src_orig.close();
+	throw std::runtime_error("Failed to create backup file: " + backup_path.string());
+    }
+
+    backup_file << src_orig.rdbuf();
+
+    src_orig.close();
+    backup_file.close();
 }
 
 void table::insert_to_filesystem(const std::string &key, user_data &&value)
@@ -770,11 +1326,19 @@ void table::insert_to_filesystem(const std::string &key, user_data &&value)
     {
 	throw std::logic_error("incorrect strategy");
     }
+
     std::string out_str = key + "#" + std::to_string(value.get_id()) + "#" + value.get_name() + "#" + value.get_surname() + "|";
     length_alignment(out_str);
 
     auto filename = table::_absolute_directory_name + get_instance_name() + _file_format;
     auto index_filename = table::_absolute_directory_name + "index_" + get_instance_name() + _file_format;
+    std::string temp_filename = _absolute_directory_name + std::string{"temp"} + _file_format;
+    std::string backup_filename = _absolute_directory_name + "backup_" + get_instance_name() + _file_format;
+
+    auto src_path = std::filesystem::absolute(filename);
+    auto temp_path = std::filesystem::absolute(temp_filename);
+    auto backup_path = std::filesystem::absolute(backup_filename);
+    std::filesystem::copy(src_path, backup_path, std::filesystem::copy_options::overwrite_existing);
 
     std::ifstream test_exist(filename);
     if (!test_exist)
@@ -836,9 +1400,21 @@ void table::insert_to_filesystem(const std::string &key, user_data &&value)
 	}
     }
 
-    bool is_target_greater = file_key < key;
+    {
+	std::ifstream src_orig(filename);
+	throw_if_not_open(src_orig);
+	std::ofstream backup_file(backup_filename, std::ios::trunc);
+	if (!backup_file.is_open())
+	{
+	    src_orig.close();
+	    throw_if_not_open(backup_file);
+	}
+	backup_file << src_orig.rdbuf();
+	src_orig.close();
+	backup_file.close();
+    }
 
-    std::string temp_filename = _absolute_directory_name + std::string{"temp"} + _file_format;
+    bool is_target_greater = file_key < key;
 
     data_file.close();
 
@@ -856,7 +1432,11 @@ void table::insert_to_filesystem(const std::string &key, user_data &&value)
     std::ifstream src(filename);
     throw_if_not_open(src);
     std::ofstream tmp_file(temp_filename);
-    throw_if_not_open(tmp_file);
+    if (!tmp_file.is_open())
+    {
+	src.close();
+	throw_if_not_open(tmp_file);
+    }
 
     std::string src_line;
     size_t pos;
@@ -891,19 +1471,6 @@ void table::insert_to_filesystem(const std::string &key, user_data &&value)
     data_file.close();
     tmp_file.close();
 
-    //TODO: copy temp to src;
-    std::string backup_filename = _absolute_directory_name + "backup_" + get_instance_name() + _file_format;
-
-    {
-	std::ifstream src_orig(filename);
-	throw_if_not_open(src_orig);
-	std::ofstream backup_file(backup_filename, std::ios::trunc);
-	throw_if_not_open(backup_file);
-	backup_file << src_orig.rdbuf();
-	src_orig.close();
-	backup_file.close();
-    }
-
     bool copy_success = true;
 
     try
@@ -912,7 +1479,11 @@ void table::insert_to_filesystem(const std::string &key, user_data &&value)
 	throw_if_not_open(temp_file);
 
 	std::ofstream final_data_file(filename, std::ios::binary | std::ios::trunc);
-	throw_if_not_open(final_data_file);
+	if (!final_data_file.is_open())
+	{
+	    temp_file.close();
+	    throw_if_not_open(final_data_file);
+	}
 
 	final_data_file << temp_file.rdbuf();
 
@@ -943,7 +1514,11 @@ void table::insert_to_filesystem(const std::string &key, user_data &&value)
 	std::ifstream backup_file(backup_filename, std::ios::binary);
 	throw_if_not_open(backup_file);
 	std::ofstream src_file(filename, std::ios::binary | std::ios::trunc);
-	throw_if_not_open(src_file);
+	if (!src_file.is_open())
+	{
+	    backup_file.close();
+	    throw_if_not_open(src_file);
+	}
 	src_file << backup_file.rdbuf();
 
 	if (!backup_file.good() || !src_file.good())
@@ -960,8 +1535,6 @@ user_data &table::obtain(const std::string &key)
 {
     return _data->obtain(key);
 }
-
-//std::streamoff table::binary_search_in_file(std::fstream &file, std::string const &key)
 
 user_data table::obtain_in_filesystem(const std::string &key)
 {
@@ -1027,7 +1600,7 @@ user_data table::obtain_in_filesystem(const std::string &key)
 
 
     data_file.close();
-    throw std::logic_error("key not found");
+    throw std::logic_error("key not found: " + key);
 }
 
 std::map<std::string, user_data> table::obtain_between(
@@ -1036,12 +1609,12 @@ std::map<std::string, user_data> table::obtain_between(
 	bool lower_bound_inclusive,
 	bool upper_bound_inclusive)
 {
-
+    std::map<std::string, user_data> result_map;
     switch (this->get_strategy())
     {
 	case storage_strategy::in_memory: {
 	    auto collection = _data->obtain_between(lower_bound, upper_bound, lower_bound_inclusive, upper_bound_inclusive);
-	    std::map<std::string, user_data> result_map;
+
 
 	    size_t length = collection.size();
 
@@ -1051,9 +1624,10 @@ std::map<std::string, user_data> table::obtain_between(
 		auto value = i.value;
 		result_map.emplace(key, value);
 	    }
-	    break;
+	    return result_map;
 	}
 	case storage_strategy::filesystem: {
+	    return result_map;
 	    break;
 	}
     }
@@ -1104,11 +1678,6 @@ void table::serialize()
 	output_file << serialized_line << std::endl;
 	++it;
 	++counter;
-	/*
-	std::string line_for_index = std::to_string(offset) + "#";
-	index_file << line_for_index;
-	offset += length + SIZEOF_NEXT_LINE_SYMB;
-	*/
     }
     index_file << counter << "#" << std::endl;
     index_file.close();
@@ -1187,23 +1756,34 @@ void table::print_table()
 
 table table::load_data_from_filesystem(std::string const &filename)
 {
-    table src_table = table();
+    table src_table;
 
     std::ifstream input_file(filename);
     if (!input_file.is_open())
     {
-	error_with_guard("file for deserializing did not open! file_name: [ " + filename + " ]");
 	return src_table;
     }
 
     std::string line;
     while (std::getline(input_file, line))
     {
-	if (line.empty() || line.back() != '|')
+	if (line.empty())
 	    continue;
-	line.pop_back();
+	//line.pop_back();
+	std::string new_line;
+	for (int i = 0; i < line.length(); ++i)
+	{
+	    if (line[i] != '|')
+	    {
+		new_line += line[i];
+	    }
+	    else
+	    {
+		break;
+	    }
+	}
 
-	std::istringstream line_stream(line);
+	std::istringstream line_stream(new_line);
 	std::string segment;
 	std::vector<std::string> seg_list;
 
@@ -1323,7 +1903,7 @@ std::vector<std::streamoff> table::load_index(std::string const &index_filename)
     std::ifstream index_file(index_filename);
     throw_if_not_open(index_file);
 
-    std::vector<std::streamoff> index_array;
+    std::vector<std::streamoff> index_array = {};
     std::string array_size;
     std::getline(index_file, array_size, '#');
     index_file.close();
@@ -1336,4 +1916,26 @@ std::vector<std::streamoff> table::load_index(std::string const &index_filename)
     }
 
     return index_array;
+}
+void table::insert_table_to_filesystem(const std::filesystem::path &path)
+{
+    std::ofstream out_file(path, std::ios::trunc | std::ios::out);
+    throw_if_not_open(out_file);
+
+    auto tbl_it = _data->begin_infix();
+    auto tbl_end = _data->end_infix();
+    while (tbl_it != tbl_end)
+    {
+	auto target_key = std::get<2>(*tbl_it);
+	auto target_value = std::get<3>(*tbl_it);
+
+	auto out_str = target_key + "#" + std::to_string(target_value.get_id()) + "#" + target_value.get_name() + "#" + target_value.get_surname() + "|";
+	throw_if_exceeds_length_limit(out_str);
+	length_alignment(out_str);
+	out_file << out_str << std::endl;
+
+	++tbl_it;
+    }
+
+    out_file.close();
 }

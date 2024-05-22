@@ -128,7 +128,6 @@ table &schema::obtain(const std::string &key)
     }
     catch (std::exception const &e)
     {
-	error_with_guard("key not found : [ " + key + " ]");
 	throw;
     }
 }
@@ -168,7 +167,7 @@ void schema::dispose(const std::string &key)
     }
     catch (std::exception const &e)
     {
-	error_with_guard("key not found : [ " + key + " ]");
+
 	throw;
     }
 }
@@ -267,4 +266,19 @@ void schema::save_schema_to_filesystem(const std::string &filename)
 
     output_file.close();
 }
+void schema::insert_schema_to_filesystem(const std::filesystem::path &path)
+{
+    auto schm_it = _data->begin_infix();
+    auto schm_end = _data->end_infix();
+    while (schm_it != schm_end)
+    {
+	auto table_name = std::get<2>(*schm_it);
+	auto target_tbl = std::get<3>(*schm_it);
 
+	std::filesystem::path table_file_path = path / (table_name + _file_format);
+//TODO: be cateful, i deleted file open close
+	target_tbl.insert_table_to_filesystem(table_file_path);
+
+	++schm_it;
+    }
+}

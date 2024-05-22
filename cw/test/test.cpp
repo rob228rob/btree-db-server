@@ -125,9 +125,9 @@ int main()
     auto start = std::chrono::high_resolution_clock::now();
     try
     {
-	for (int i = 9350; i < 9351; ++i)
+	for (int i = 159'350; i < 160'001; ++i)
 	{
-	    tbl.insert("zov" + std::to_string(i), user_data(i, "TESTINS", "TESTINSERT"));
+	    tbl.insert("GOOOL" + std::to_string(i), user_data(i, "NOHAHA", "DEDINCIIKSMK"));
 	    //tbl.update_in_filesystem("wwWOWOWO" + std::to_string(i), user_data(0, "Gamnouuuuu", "AiSauuuuu"));
 	    //tbl.obtain_in_filesystem("ke" + std::to_string(i));//, user_data(0, "ILYA", "IBRITSKI"));
 	    //user_data ud(i, "AIKAMEN", "STEKLOBETONKA");

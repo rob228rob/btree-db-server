@@ -8,6 +8,7 @@
 #include "../../../b-tree/b_tree.h"
 #include "../../common/include/storage_interface.h"
 #include "../../user_data/include/user_data.h"
+#include <filesystem>
 #include <memory>
 #include <string>
 #include <vector>
@@ -15,7 +16,11 @@
 class table :
     public storage_interface<std::string, user_data>
 {
+private:
+
     friend class data_base;
+
+    friend class schema;
 
 private:
 
@@ -23,6 +28,9 @@ private:
 
     std::unique_ptr<b_tree<std::string, user_data>> _data;
 
+    /*
+     * TODO: DEPRICATED!!!!
+     */
     inline static std::string _absolute_directory_name = "C:\\Users\\rob22\\CLionProjects\\cw_os\\cw\\filesystem\\tables\\";
 
 public:
@@ -48,6 +56,20 @@ public:
 
     table& operator=(table&& other) noexcept;
 
+private:
+
+    static void delete_backup(const std::filesystem::path &source_path);
+
+    static void create_backup(const std::filesystem::path &source_path);
+
+    static bool check_and_create_with_insertion(const std::filesystem::path &path, const std::filesystem::path &index_filename, const std::string &out_str);
+
+    static bool check_and_create_empty(const std::filesystem::path &path, const std::filesystem::path &index_filename);
+
+    static void insert_ud_to_filesystem(std::filesystem::path const &path, std::filesystem::path const &index_path, std::string const &key, user_data &&ud);
+
+    static void insert_ud_to_filesystem(std::filesystem::path const &path, std::filesystem::path const &index_path, std::string const &key, user_data const &ud);
+
 public:
 
     static std::function<int(const std::string& , const std::string&)> _default_string_comparer;
@@ -66,17 +88,21 @@ public:
 
     void dispose(const std::string &key) override;
 
-    //Make this block private:
-
     user_data obtain_in_filesystem(const std::string &key);
 
+
+
 private:
+
+    void insert_table_to_filesystem(std::filesystem::path const &path);
 
     void insert_to_filesystem(const std::string &key, user_data &&value);
 
     void insert_to_filesystem(const std::string &key, const user_data &value);
 
-    void dispose_from_filesystem(const std::string &key);
+    static void dispose_ud_from_filesystem(std::filesystem::path const &path, std::filesystem::path const &index_path, std::string const &key);
+
+    static void update_ud_in_filesystem(const std::filesystem::path &table_path, const std::filesystem::path &index_table_path, const std::string &user_data_key, user_data &&value);
 
     void update_in_filesystem(const std::string &key, user_data &&value);
 
@@ -88,7 +114,7 @@ private:
 
     static void save_index(std::vector<std::streamoff> const &vec, std::string const &filename);
 
-    void decrease_index(std::vector<std::streamoff> &vec);
+    static void decrease_index(std::vector<std::streamoff> &vec);
 
     static std::vector<std::streamoff> load_index(const std::string &index_filename);
 
@@ -112,7 +138,7 @@ public:
 
     void print_table();
 
-    table load_data_from_filesystem(std::string const &filename = "");
+    static table load_data_from_filesystem(std::string const &filename = "");
 
     void save_data_to_filesystem(std::string const &filename = "");
 
@@ -121,6 +147,16 @@ public:
     static user_data create_user_data(const std::string &ud_line);
 
     static int get_index_by_bin_search(std::ifstream &src, const std::vector<std::streamoff> &index_array, const std::string &key);
+
+    static void load_backup(const std::filesystem::path &source_path);
+
+    static std::map<std::string, user_data> obtain_between_ud_in_filesystem(
+	    std::filesystem::path const &filepath,
+	    std::filesystem::path const &index_filepath,
+	    std::string const &lower_bound,
+	    std::string const &upper_bound,
+	    bool lower_bound_inclusive,
+	    bool upper_bound_inclusive);
 };
 
 #endif//CW_OS_TABLE_H

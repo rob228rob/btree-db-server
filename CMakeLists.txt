@@ -22,7 +22,9 @@ add_executable(cw_os
         logger/client_logger/src/client_logger.cpp
         logger/logger/src/logger.cpp
         logger/logger/src/logger_guardant.cpp
-        cw/test/test.cpp
+        allocator/allocator/src/allocator_guardant.cpp
+        allocator/allocator/src/allocator_test_utils.cpp
+        allocator/allocator_boundary_tags/src/allocator_boundary_tags.cpp
 )
 
 
