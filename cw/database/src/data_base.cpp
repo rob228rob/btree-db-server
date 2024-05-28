@@ -68,12 +68,6 @@ data_base::data_base(const std::string &instance_name, storage_strategy strategy
 
 data_base::~data_base()
 {
-    //TODO: CHANGE LOGIC TO NEW CONSTRUCTOR!!!!!!!!!!!!!!!!!!!))!)!))______!!!!!!!!!!!!!!!!!
-
-    if (this->get_strategy() == storage_strategy::in_memory)
-    {
-	//save_db_to_filesystem();
-    }
 }
 
 data_base::data_base(data_base &&other) noexcept
@@ -540,69 +534,6 @@ void data_base::save_data_base_state()
     }
 }
 
-void data_base::save_db_to_filesystem()
-{
-    //TODO: save class-state and add prefix _abs_directory;
-    // TODO:!!!!! UPDATE LOGIC!!!!!!!!!!!!
-    if (get_strategy() != storage_strategy::in_memory)
-    {
-	throw std::logic_error("Invalid strategy for this operation");
-    }
-    std::string filename = this->_instance_name + data_base::_file_format;
-
-    std::ofstream output_file(filename);
-
-    if (!output_file.is_open())
-    {
-	error_with_guard("file for deserializing did not open! file_name: [ " + filename + " ]");
-	return;
-    }
-
-    auto it = _data->begin_infix();
-    auto it_end = _data->end_infix();
-    while (it != it_end)
-    {
-	auto string_key = std::get<2>(*it);
-	auto target_schemas_pool = std::get<3>(*it);
-
-	output_file << string_key << "|" << std::endl;
-	auto schemas_pool_filename = filename + data_base::_file_format;
-	target_schemas_pool.save_schemas_pool_to_filesystem(string_key);
-	++it;
-    }
-
-    output_file.close();
-}
-
-void data_base::load_db_from_filesystem(const std::string &filename)
-{
-    std::string filename_copy = filename.length() == 0 ? "data_base.txt" : filename;
-
-    std::ifstream input_file(filename_copy);
-    if (!input_file.is_open())
-    {
-	error_with_guard("file for deserializing did not open! file_name: [ " + filename + " ]");
-	throw std::runtime_error("file for deserializing did not open! file_name: [ " + filename + " ]");
-    }
-
-    std::string line;
-    while (std::getline(input_file, line))
-    {
-	if (line.empty() || line.back() != '|')
-	{
-	    continue;
-	}
-
-	line.pop_back();
-	std::string schemas_pool_filename = line + data_base::_file_format;
-	schemas_pool pool = schemas_pool();
-	pool.load_schemas_pool_from_filesystem(schemas_pool_filename);
-
-	_data->insert(line, pool);
-    }
-
-    input_file.close();
-}
 void data_base::deserialize()
 {
 }
@@ -1270,7 +1201,7 @@ void data_base::start_console_dialog()
     {
 	std::cout << "Input operation from list: \n[1] insert_pool; [2] insert_schema; [3] insert_table \n[4] dispose_pool; "
 		  << "[5] dispose_schema; [6] dispose_table \n[7] insert_data; [8] dispose_data; [9] obtain_data\n[10] obtain_between_data "
-		  << "[11] update_data [12] exit\n[13] execute_file_command" << std::endl;
+		  << "[11] update_data [12] exit\n[13] execute_file_command\n[14] save_db_state\n[15] load_db_state\n(Please, input only command)\n" << std::endl;
 
 	std::cin >> command;
 	if (command.empty())
@@ -1394,22 +1325,24 @@ void data_base::start_console_dialog()
 	else if (action == "obtain_between_data")
 	{
 	    std::string pool_name, schema_name, table_name, lower_bound, upper_bound;
-	    bool lower_inclusive, upper_inclusive;
+	    std::string lower_inclusive, upper_inclusive;
 	    read_path_to_table(pool_name, schema_name, table_name);
 	    std::cout << "Enter the lower bound: ";
 	    std::cin >> lower_bound;
 	    std::cout << "Inclusive? (1 - yes, 0 - no): ";
 	    std::cin >> lower_inclusive;
 	    std::cin.ignore();
+	    throw_if_str_not_bool(lower_inclusive);
 	    std::cout << "Enter the upper bound: ";
 	    std::cin >> upper_bound;
 	    std::cout << "Inclusive? (1 - yes, 0 - no): ";
 	    std::cin >> upper_inclusive;
 	    std::cin.ignore();
+	    throw_if_str_not_bool(upper_inclusive);
 
 	    try
 	    {
-		auto data_range = obtain_between_data(pool_name, schema_name, table_name, lower_bound, upper_bound, lower_inclusive, upper_inclusive);
+		auto data_range = obtain_between_data(pool_name, schema_name, table_name, lower_bound, upper_bound, lower_inclusive == "1" ? true : false, upper_inclusive == "1" ? true : false);
 		std::cout << "Range data obtained:\n";
 		for (const auto &ud: data_range)
 		{
@@ -1494,6 +1427,30 @@ void data_base::start_console_dialog()
 		std::cerr << "Error removing data: " << e.what() << std::endl;
 	    }
 	}
+	else if (action == "save_db_state")
+	{
+	    try
+	    {
+		save_data_base_state();
+		std::cout << "\nData base state saved successfully.\n" << std::endl;
+	    }
+	    catch (std::exception const &e)
+	    {
+		std::cerr << "Error saving state: " << e.what() << std::endl;
+	    }
+	}
+	else if (action == "load_db_state")
+	{
+	    try
+	    {
+		load_data_base_state();
+		std::cout << "\nData base state load successfully.\n" << std::endl;
+	    }
+	    catch (std::exception const &e)
+	    {
+		std::cerr << "Error saving state: " << e.what() << std::endl;
+	    }
+	}
 	else if (action == "execute_file_command")
 	{
 	    std::string filename;
@@ -1502,7 +1459,7 @@ void data_base::start_console_dialog()
 	    try
 	    {
 		this->execute_command_from_file(filename);
-		std::cout << "Operation finished successfully" << std::endl;
+		std::cout << "\nOperation finished successfully\n" << std::endl;
 	    }
 	    catch (std::exception const &e)
 	    {
@@ -1544,4 +1501,10 @@ void data_base::read_user_data(std::string &str_id, std::string &str_name, std::
     std::cin >> str_surname;
 }
 
-
+void data_base::throw_if_str_not_bool(std::string const &str)
+{
+    if (str.length() != 1 || (str[0] != '0' && str[0] != '1'))
+    {
+	throw std::logic_error("Invalid string for cast to bool value! There must be only 1 or 0. ");
+    }
+}

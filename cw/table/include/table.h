@@ -28,11 +28,6 @@ private:
 
     std::unique_ptr<b_tree<std::string, user_data>> _data;
 
-    /*
-     * TODO: DEPRICATED!!!!
-     */
-    inline static std::string _absolute_directory_name = "C:\\Users\\rob22\\CLionProjects\\cw_os\\cw\\filesystem\\tables\\";
-
 public:
 
     explicit table(std::size_t t,
@@ -89,8 +84,6 @@ public:
     void dispose(const std::string &key) override;
 
     user_data obtain_in_filesystem(const std::string &key);
-
-
 
 private:
 

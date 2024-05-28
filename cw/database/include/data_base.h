@@ -22,6 +22,8 @@ public:
 
 private:
 
+    friend class string_pool;
+
     std::filesystem::path _instance_path;
 
     friend class table;
@@ -286,6 +288,7 @@ private:
 
     static void read_user_data(std::string &str_id, std::string &str_name, std::string &str_surname);
 
+    static void throw_if_str_not_bool(const std::string &str);
 };
 
 #endif//CW_OS_DATA_BASE_H

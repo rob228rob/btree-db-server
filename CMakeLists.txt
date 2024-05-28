@@ -5,7 +5,7 @@ set(CMAKE_CXX_STANDARD 17)
 
 add_executable(cw_os
         cw/database/src/main.cpp
-        C:/Users/rob22/CLionProjects/cw_os/allocator/allocator/src/allocator_guardant.cpp
+        #C:/Users/rob22/CLionProjects/cw_os/allocator/allocator/src/allocator_guardant.cpp
         b-tree/b_tree.h
         b-tree/search_tree.h
         cw/database/include/data_base.h
@@ -25,6 +25,7 @@ add_executable(cw_os
         allocator/allocator/src/allocator_guardant.cpp
         allocator/allocator/src/allocator_test_utils.cpp
         allocator/allocator_boundary_tags/src/allocator_boundary_tags.cpp
+        cw/string_pool/src/string_pool.cpp
 )
 
 
@@ -46,4 +47,9 @@ add_executable(new_test
         logger/client_logger/src/client_logger.cpp
         logger/logger/src/logger.cpp
         logger/logger/src/logger_guardant.cpp
+)
+
+add_executable(PreparingToTheTest
+        C:/Users/rob22/CLionProjects/cw_os/PreparingToTheTest/bbst.cpp
+        C:/Users/rob22/CLionProjects/cw_os/PreparingToTheTest/bbst.h
 )

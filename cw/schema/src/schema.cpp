@@ -260,7 +260,7 @@ void schema::save_schema_to_filesystem(const std::string &filename)
 	output_file << string_key << "|" << std::endl;
 
 	auto table_filename = string_key + schema::_file_format;
-	target_table.save_data_to_filesystem(table_filename);
+	//target_table.save_data_to_filesystem(table_filename);
     	++it;
     }
 

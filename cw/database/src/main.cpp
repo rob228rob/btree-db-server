@@ -78,24 +78,24 @@ int main()
 
 	auto path = "C:\\Users\\rob22\\CLionProjects\\cw_os\\cw\\database\\src\\test_command.txt";
 	//db.execute_command_from_file(path);
-	db_1.insert_schemas_pool("main_pool", schemas_pool());
-	db_1.insert_schema("main_pool", "hr", schema());
-	db_1.insert_table("main_pool", "hr", "schema_employees", table());
+	//db_1.insert_schemas_pool("main_pool1", schemas_pool());
+	//db_1.insert_schema("main_pool1", "hr", schema());
+	//db_1.insert_table("main_pool1", "hr", "schema_employees", table());
 	//db_1.load_data_base_state();
 	//db_1.start_console_dialog();
-	for (int i = 0; i < 1109800; ++i)
-	{
-	    db_1.insert_data("main_pool", "hr", "schema_employees", std::to_string(i), user_data(i,"Robs", "Bats"));
-	}
+//	for (int i = 0; i < 1098; ++i)
+//	{
+//	    //db_1.insert_data("main_pool1", "hr", "schema_employees", std::to_string(i), user_data(i,"Robs", "Bats"));
+//	}
 
-	for (int i = 0; i < 1109800; ++i)
+	for (int i = 0; i < 1800; ++i)
 	{
-	    db_1.dispose_user_data("main_pool", "hr", "schema_employees", std::to_string(i));
+	    //db_1.insert_data("main_pool1", "hr", "schema_employees", std::to_string(i), user_data(1, "Robs", "Hm"));
 	}
 	//db_1.save_data_base_state();
 
 	//db_1.save_data_base_state();
-	//db.start_console_dialog();
+	db_1.start_console_dialog();
 	//sch.insert("new_table", tbl);
 	//sch_p.insert("new_schema", sch);
 	//db.insert_schemas_pool("TEST", schemas_pool());

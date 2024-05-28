@@ -36,8 +36,6 @@ table::table(
     set_instance_name(instance_name);
     this->_logger = logger;
 
-    _absolute_directory_name = "C:\\Users\\rob22\\CLionProjects\\cw_os\\cw\\filesystem\\tables\\";
-
     set_strategy(storage_strategy);
 
     if (this->_storaged_strategy == storage_interface<std::string, user_data>::storage_strategy::in_memory)
@@ -126,7 +124,7 @@ void table::insert(const std::string &key, user_data &&value)
 	    _data->insert(key, std::move(value));
 	    break;
 	case storage_strategy::filesystem:
-	    insert_to_filesystem(key, std::move(value));
+	    //insert_to_filesystem(key, std::move(value));
 	    break;
     }
 }
@@ -156,8 +154,8 @@ void table::insert_to_filesystem(std::string const &key, const user_data &value)
     std::string out_str = key + "#" + std::to_string(value.get_id()) + "#" + value.get_name() + "#" + value.get_surname() + "|";
     length_alignment(out_str);
 
-    auto filename = table::_absolute_directory_name + get_instance_name() + _file_format;
-    auto index_filename = table::_absolute_directory_name + "index_" + get_instance_name() + _file_format;
+    auto filename =  get_instance_name() + _file_format;
+    auto index_filename = "index_" + get_instance_name() + _file_format;
 
     std::ifstream test_exist(filename);
     if (!test_exist)
@@ -211,7 +209,7 @@ void table::insert_to_filesystem(std::string const &key, const user_data &value)
 
     bool is_target_greater = file_key < key;
 
-    std::string temp_filename = _absolute_directory_name + std::string{"temp"} + _file_format;
+    std::string temp_filename =  std::string{"temp"} + _file_format;
 
     data_file.close();
 
@@ -266,7 +264,7 @@ void table::insert_to_filesystem(std::string const &key, const user_data &value)
 
     //TODO: copy temp to src;
 
-    std::string backup_filename = _absolute_directory_name + "backup_" + get_instance_name() + _file_format;
+    std::string backup_filename = "backup_" + get_instance_name() + _file_format;
 
     {
 	std::ifstream src_orig(filename);
@@ -440,8 +438,8 @@ void table::update_in_filesystem(std::string const &key, user_data &&value)
     std::string out_str = key + "#" + std::to_string(value.get_id()) + "#" + value.get_name() + "#" + value.get_surname() + "|";
     length_alignment(out_str);
 
-    auto filename = table::_absolute_directory_name + get_instance_name() + _file_format;
-    auto index_filename = table::_absolute_directory_name + "index_" + get_instance_name() + _file_format;
+    auto filename =  get_instance_name() + _file_format;
+    auto index_filename =+ "index_" + get_instance_name() + _file_format;
 
     std::ifstream index_file(index_filename);
     throw_if_not_open(index_file);
@@ -681,8 +679,8 @@ std::map<std::string, user_data> table::obtain_between_in_filesystem(
 	throw std::logic_error("upper bound less than lower?? puc puc..");
     }
 
-    auto filename = table::_absolute_directory_name + get_instance_name() + _file_format;
-    auto index_filename = table::_absolute_directory_name + "index_" + get_instance_name() + _file_format;
+    auto filename =get_instance_name() + _file_format;
+    auto index_filename ="index_" + get_instance_name() + _file_format;
 
     std::ifstream index_file(index_filename);
     throw_if_not_open(index_file);
@@ -1320,287 +1318,9 @@ void table::create_backup(const std::filesystem::path &source_path)
     backup_file.close();
 }
 
-void table::insert_to_filesystem(const std::string &key, user_data &&value)
-{
-    if (get_strategy() == storage_strategy::in_memory)
-    {
-	throw std::logic_error("incorrect strategy");
-    }
-
-    std::string out_str = key + "#" + std::to_string(value.get_id()) + "#" + value.get_name() + "#" + value.get_surname() + "|";
-    length_alignment(out_str);
-
-    auto filename = table::_absolute_directory_name + get_instance_name() + _file_format;
-    auto index_filename = table::_absolute_directory_name + "index_" + get_instance_name() + _file_format;
-    std::string temp_filename = _absolute_directory_name + std::string{"temp"} + _file_format;
-    std::string backup_filename = _absolute_directory_name + "backup_" + get_instance_name() + _file_format;
-
-    auto src_path = std::filesystem::absolute(filename);
-    auto temp_path = std::filesystem::absolute(temp_filename);
-    auto backup_path = std::filesystem::absolute(backup_filename);
-    std::filesystem::copy(src_path, backup_path, std::filesystem::copy_options::overwrite_existing);
-
-    std::ifstream test_exist(filename);
-    if (!test_exist)
-    {
-	std::ofstream new_file(filename);
-	std::vector<std::streamoff> new_index_array = {0};
-	if (!new_file) throw std::logic_error("Cannot create a new file");
-	new_file << out_str << std::endl;
-	new_file.close();
-	save_index(new_index_array, index_filename);
-	return;
-    }
-    test_exist.close();
-
-    auto index_array = load_index(index_filename);
-    if (index_array.empty())
-    {
-	std::ofstream src(filename);
-	throw_if_not_open(src);
-	src << out_str << std::endl;
-	src.close();
-	update_index(index_array);
-	save_index(index_array, index_filename);
-	return;
-    }
-
-    std::ifstream data_file(filename);
-    throw_if_not_open(data_file);
-
-    size_t left = 0;
-    size_t right = index_array.size() - 1;
-    std::string file_key;
-    while (left <= right)
-    {
-	size_t mid = left + (right - left) / 2;
-
-	data_file.seekg(index_array[mid]);
-
-	std::getline(data_file, file_key, '#');
-
-	if (file_key == key)
-	{
-	    data_file.close();
-	    throw std::logic_error("duplicate key");
-	}
-
-	if (right == left)
-	{
-	    break;
-	}
-
-	if (file_key < key)
-	{
-	    left = mid + 1;
-	}
-	else
-	{
-	    right = mid;
-	}
-    }
-
-    {
-	std::ifstream src_orig(filename);
-	throw_if_not_open(src_orig);
-	std::ofstream backup_file(backup_filename, std::ios::trunc);
-	if (!backup_file.is_open())
-	{
-	    src_orig.close();
-	    throw_if_not_open(backup_file);
-	}
-	backup_file << src_orig.rdbuf();
-	src_orig.close();
-	backup_file.close();
-    }
-
-    bool is_target_greater = file_key < key;
-
-    data_file.close();
-
-    if (left == index_array.size() - 1 && is_target_greater)
-    {
-	std::ofstream data_file(filename, std::ios::app);
-	throw_if_not_open(data_file);
-	data_file << out_str << std::endl;
-	data_file.close();
-	update_index(index_array);
-	save_index(index_array, index_filename);
-	return;
-    }
-
-    std::ifstream src(filename);
-    throw_if_not_open(src);
-    std::ofstream tmp_file(temp_filename);
-    if (!tmp_file.is_open())
-    {
-	src.close();
-	throw_if_not_open(tmp_file);
-    }
-
-    std::string src_line;
-    size_t pos;
-    while (std::getline(src, src_line))
-    {
-	pos = src_line.find('#');
-	if (pos != std::string::npos)
-	{
-	    std::string current_key = src_line.substr(0, pos);
-	    if (current_key == file_key)
-	    {
-		if (is_target_greater)
-		{
-		    tmp_file << src_line << std::endl;
-		    tmp_file << out_str << std::endl;
-		}
-		else
-		{
-		    tmp_file << out_str << std::endl;
-		    tmp_file << src_line << std::endl;
-		}
-
-		continue;
-	    }
-	}
-
-	tmp_file << src_line << std::endl;
-    }
-
-    update_index(index_array);
-    save_index(index_array, index_filename);
-    data_file.close();
-    tmp_file.close();
-
-    bool copy_success = true;
-
-    try
-    {
-	std::ifstream temp_file(temp_filename, std::ios::binary);
-	throw_if_not_open(temp_file);
-
-	std::ofstream final_data_file(filename, std::ios::binary | std::ios::trunc);
-	if (!final_data_file.is_open())
-	{
-	    temp_file.close();
-	    throw_if_not_open(final_data_file);
-	}
-
-	final_data_file << temp_file.rdbuf();
-
-	if (!temp_file.good() || !final_data_file.good())
-	{
-	    copy_success = false;
-	}
-
-	temp_file.close();
-	final_data_file.close();
-    }
-    catch (...)
-    {
-	copy_success = false;
-    }
-
-    if (copy_success)
-    {
-	//TODO: back-up logic!! Need to implementation
-	if (remove(temp_filename.c_str()) != 0 || remove(backup_filename.c_str()) != 0)
-	{
-	    warning_with_guard("puc puc puc, removing backup or temp file went wrong :(");
-	}
-    }
-    else
-    {
-	//restoring file from back-up
-	std::ifstream backup_file(backup_filename, std::ios::binary);
-	throw_if_not_open(backup_file);
-	std::ofstream src_file(filename, std::ios::binary | std::ios::trunc);
-	if (!src_file.is_open())
-	{
-	    backup_file.close();
-	    throw_if_not_open(src_file);
-	}
-	src_file << backup_file.rdbuf();
-
-	if (!backup_file.good() || !src_file.good())
-	{
-	    throw std::logic_error("smth went wrong puc puc..; back up went wrong");
-	}
-
-	backup_file.close();
-	src_file.close();
-    }
-}
-
 user_data &table::obtain(const std::string &key)
 {
     return _data->obtain(key);
-}
-
-user_data table::obtain_in_filesystem(const std::string &key)
-{
-    if (get_strategy() == storage_strategy::in_memory)
-    {
-	throw std::logic_error("access denied, invalid strategy");
-    }
-
-    auto filename = table::_absolute_directory_name + get_instance_name() + _file_format;
-    auto index_filename = table::_absolute_directory_name + "index_" + get_instance_name() + _file_format;
-
-    std::ifstream index_file(index_filename);
-    throw_if_not_open(index_file);
-
-    std::vector<std::streamoff> index_array = load_index(index_filename);
-
-    std::ifstream data_file(filename);
-    throw_if_not_open(data_file);
-
-    size_t left = 0;
-    size_t right = index_array.size() - 1;
-
-    while (left <= right)
-    {
-	size_t mid = left + (right - left) / 2;
-
-	data_file.seekg(index_array[mid]);
-
-	std::string file_key;
-	std::getline(data_file, file_key, '#');
-	std::cout << file_key << std::endl;
-	if (key == file_key)
-	{
-	    std::string user_info;
-	    std::getline(data_file, user_info, '|');
-	    std::istringstream iss(user_info);
-	    std::string id_str, name, surname;
-
-	    std::getline(iss, id_str, '#');
-	    std::getline(iss, name, '#');
-	    std::getline(iss, surname, '#');
-
-	    size_t id = std::stoul(id_str);
-
-	    data_file.close();
-
-	    return user_data(id, name, surname);
-	}
-
-	if (right == left)
-	{
-	    break;
-	}
-	if (file_key < key)
-	{
-	    left = mid + 1;
-	}
-	else
-	{
-	    right = mid - 1;
-	}
-    }
-
-
-    data_file.close();
-    throw std::logic_error("key not found: " + key);
 }
 
 std::map<std::string, user_data> table::obtain_between(
@@ -1644,91 +1364,6 @@ void table::dispose(const std::string &key)
 
 	    break;
     }
-}
-
-void table::serialize()
-{
-    std::ofstream output_file(table::_absolute_directory_name + get_instance_name() + _file_format);
-    if (!output_file.is_open())
-    {
-	error_with_guard("file for serializing did not open! file_name: [ " + _storage_filename + " ]");
-	throw std::runtime_error("file did not open");
-    }
-
-    std::ofstream index_file(table::_absolute_directory_name + "index_" + get_instance_name() + _file_format);
-    if (!index_file.is_open())
-    {
-	output_file.close();
-	throw std::runtime_error("file did not open");
-    }
-
-    auto it = _data->begin_infix();
-    auto it_end = _data->end_infix();
-
-    size_t offset = 0;
-    size_t counter = 0;
-    while (it != it_end)
-    {
-	auto string_key = std::get<2>(*it);
-	auto user_data_value = std::get<3>(*it);
-
-	auto serialized_line = string_key + "#" + std::to_string(user_data_value.get_id()) + "#" + user_data_value.get_name() + "#" + user_data_value.get_surname() + "|";
-	length_alignment(serialized_line);
-	auto length = serialized_line.length();
-	output_file << serialized_line << std::endl;
-	++it;
-	++counter;
-    }
-    index_file << counter << "#" << std::endl;
-    index_file.close();
-    output_file.close();
-}
-
-void table::deserialize()
-{
-    std::ifstream input_file(_absolute_directory_name + get_instance_name() + _file_format);
-    if (!input_file.is_open())
-    {
-	error_with_guard("file for deserializing did not open! file_name: [ " + _storage_filename + " ]");
-	return;
-    }
-
-    std::string line;
-    while (std::getline(input_file, line))
-    {
-	if (line.empty() || line.back() != '|')
-	    continue;
-
-	line.pop_back();
-
-	std::istringstream line_stream(line);
-
-	std::string segment;
-
-	std::vector<std::string> seg_list;
-
-	while (std::getline(line_stream, segment, '#'))
-	{
-	    seg_list.push_back(segment);
-	}
-
-	if (seg_list.size() != 4)
-	{
-	    //TODO: handle error
-	    continue;
-	}
-
-	std::string string_key = seg_list[0];
-	size_t id = std::stol(seg_list[1]);
-	std::string name = seg_list[2];
-	std::string surname = seg_list[3];
-
-	user_data ud(id, name, surname);
-
-	_data->insert(string_key, std::move(ud));
-    }
-
-    input_file.close();
 }
 
 void table::set_storage_filename(std::string &filename)
@@ -1810,52 +1445,6 @@ table table::load_data_from_filesystem(std::string const &filename)
     return src_table;
 }
 
-void table::save_data_to_filesystem(const std::string &filename)
-{
-    std::string filename_copy = filename.length() == 0
-					? get_instance_name()
-					: filename;
-
-    auto index_filename = _absolute_directory_name + "index_" + filename_copy + _file_format;
-
-    std::ofstream index_file(index_filename);
-    throw_if_not_open(index_file);
-
-    std::string src_filename = _absolute_directory_name + filename_copy + _file_format;
-    std::ofstream output_file(src_filename);
-    if (!output_file.is_open())
-    {
-	index_file.close();
-	error_with_guard("file for serializing did not open! file_name: [ " + filename_copy + " ]");
-	throw std::runtime_error("file for serializing did not open!");
-    }
-
-    auto it = _data->begin_infix();
-    auto it_end = _data->end_infix();
-
-    size_t offset = 0;
-    size_t counter = 0;
-    while (it != it_end)
-    {
-	auto string_key = std::get<2>(*it);
-	auto user_data_value = std::get<3>(*it);
-
-	auto serialized_line = string_key + "#" + std::to_string(user_data_value.get_id()) + "#" + user_data_value.get_name() + "#" + user_data_value.get_surname() + "|";
-	length_alignment(serialized_line);
-	auto length = serialized_line.length();
-	output_file << serialized_line << std::endl;
-	++it;
-	++counter;
-	/*
-	std::string line_for_index = std::to_string(offset) + "#";
-	index_file << line_for_index;
-	offset += length + SIZEOF_NEXT_LINE_SYMB;
-	*/
-    }
-    index_file << counter << "#" << std::endl;
-    index_file.close();
-    output_file.close();
-}
 void table::update(const std::string &key, const user_data &value)
 {
     _data->update(key, value);
@@ -1938,4 +1527,10 @@ void table::insert_table_to_filesystem(const std::filesystem::path &path)
     }
 
     out_file.close();
+}
+void table::serialize()
+{
+}
+void table::deserialize()
+{
 }
