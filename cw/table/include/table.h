@@ -139,9 +139,13 @@ public:
 
     static user_data create_user_data(const std::string &ud_line);
 
-    static int get_index_by_bin_search(std::ifstream &src, const std::vector<std::streamoff> &index_array, const std::string &key);
+    [[maybe_unused]] static int get_index_by_bin_search(std::ifstream &src, const std::vector<std::streamoff> &index_array, const std::string &key);
+
+private:
 
     static void load_backup(const std::filesystem::path &source_path);
+
+    static std::map<std::string, user_data> obtain_all_ud_in_filesystem(const std::filesystem::path &filepath, const std::filesystem::path &index_filepath);
 
     static std::map<std::string, user_data> obtain_between_ud_in_filesystem(
 	    std::filesystem::path const &filepath,
@@ -150,6 +154,8 @@ public:
 	    std::string const &upper_bound,
 	    bool lower_bound_inclusive,
 	    bool upper_bound_inclusive);
+
+
 };
 
 #endif//CW_OS_TABLE_H

@@ -21,6 +21,27 @@ template<
 class storage_interface : public logger_guardant,
 			  public allocator_guardant
 {
+public:
+
+    virtual void insert(const tkey &key, const tvalue &value) = 0;
+
+    virtual void insert(const tkey &key, tvalue &&value) = 0;
+
+    virtual tvalue &obtain(const tkey &key) = 0;
+
+    virtual std::map<tkey, tvalue> obtain_between(
+	    tkey const &lower_bound,
+	    tkey const &upper_bound,
+	    bool lower_bound_inclusive,
+	    bool upper_bound_inclusive) = 0;
+
+    virtual void update(const tkey &key, const tvalue &value) = 0;
+
+    virtual void update(const tkey &key, tvalue &&value) = 0;
+
+    virtual void dispose(const tkey &key) = 0;
+
+    virtual ~storage_interface() = default;
 
 protected:
 
@@ -34,7 +55,6 @@ protected:
 
     static void throw_if_exceeds_length_limit(std::string const &str);
 
-protected:
     inline static std::string _file_format = ".txt";
 
     std::string _instance_name;
@@ -58,6 +78,7 @@ protected:
     logger *_logger;
 
 public:
+
     enum class storage_strategy
     {
 	in_memory,
@@ -65,32 +86,13 @@ public:
     };
 
 protected:
+
     storage_strategy _storaged_strategy;
 
     storage_interface<tkey, tvalue>::storage_strategy get_strategy() noexcept;
 
     void set_strategy(storage_strategy storaged_strategy);
 
-public:
-    virtual void insert(const tkey &key, const tvalue &value) = 0;
-
-    virtual void insert(const tkey &key, tvalue &&value) = 0;
-
-    virtual tvalue &obtain(const tkey &key) = 0;
-
-    virtual std::map<tkey, tvalue> obtain_between(
-	    tkey const &lower_bound,
-	    tkey const &upper_bound,
-	    bool lower_bound_inclusive,
-	    bool upper_bound_inclusive) = 0;
-
-    virtual void update(const tkey &key, const tvalue &value) = 0;
-
-    virtual void update(const tkey &key, tvalue &&value) = 0;
-
-    virtual void dispose(const tkey &key) = 0;
-
-    virtual ~storage_interface() = default;
 
 protected:
     virtual void serialize() = 0;
@@ -311,7 +313,7 @@ void storage_interface<tkey, tvalue>::create_backup(const std::filesystem::path 
 
 template<typename tkey, typename tvalue>
 user_data storage_interface<tkey, tvalue>::obtain_in_filesystem(const std::filesystem::path &data_path, const std::filesystem::path &index_path, const std::string &key) {
-//TODO: MDAAA 0 1 ind FAILED!!!
+//TODO: MDAAA 0 1 ind FAILED!!! OR NOT)))))
     std::vector<std::streamoff> index_array = load_index(index_path.string());
 
     if (index_array.empty())
@@ -331,22 +333,25 @@ user_data storage_interface<tkey, tvalue>::obtain_in_filesystem(const std::files
 
 	data_file.seekg(index_array[mid]);
 
-	std::string file_key;
-	std::getline(data_file, file_key, '#');
+	std::string key_ind;
+	std::getline(data_file, key_ind, '#');
+	std::string file_key = string_pool::get_string(std::stol(key_ind));
 	if (key == file_key)
 	{
 	    std::string user_info;
 	    std::getline(data_file, user_info, '|');
 	    std::istringstream iss(user_info);
-	    std::string id_str, name, surname;
+	    std::string id_str, name_ind, surname_ind;
 
 	    std::getline(iss, id_str, '#');
-	    std::getline(iss, name, '#');
-	    std::getline(iss, surname, '#');
+	    std::getline(iss, name_ind, '#');
+	    std::getline(iss, surname_ind, '#');
 
+	    std::string name_value = string_pool::get_string(std::stol(name_ind));
+	    std::string surname_value = string_pool::get_string(std::stol(surname_ind));
 	    size_t id = std::stoul(id_str);
 
-	    return user_data(id, name, surname);
+	    return user_data(id, name_value, surname_value);
 	}
 
 	if (right == left)

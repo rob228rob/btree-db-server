@@ -1,7 +1,8 @@
+#include "../../../allocator/allocator_boundary_tags/include/allocator_boundary_tags.h"
 #include "../../../b-tree/b_tree.h"
 #include "../include/data_base.h"
 #include <iostream>
-#include "../../../allocator/allocator_boundary_tags/include/allocator_boundary_tags.h"
+#include <random>
 
 struct CustomCompare {
     int operator()(int const &a, int const &b) const
@@ -14,6 +15,28 @@ struct CustomCompare {
     }
 };
 
+std::mt19937& getRandomGenerator() {
+    static std::mt19937 generator(static_cast<unsigned long>(std::time(nullptr)));
+    return generator;
+}
+
+std::string generateRandomString(size_t length) {
+    const std::string chars = "ABCDEFGHIJKLMNOPQRSTUVWXYZ"
+			      "abcdefghijklmnopqrstuvwxyz"
+			      "0123456789";
+
+    std::mt19937& generator = getRandomGenerator();
+    std::uniform_int_distribution<size_t> distribution(0, chars.size() - 1);
+
+    std::string randomString;
+    randomString.reserve(length);
+
+    for (size_t i = 0; i < length; ++i) {
+	randomString += chars[distribution(generator)];
+    }
+
+    return randomString;
+}
 
 int main()
 {
@@ -69,18 +92,18 @@ int main()
     return 0;
 }
 */
-    allocator* alc = new allocator_boundary_tags(100'000, nullptr, nullptr, allocator_with_fit_mode::fit_mode::first_fit);
+    allocator* alc = new allocator_boundary_tags(100'000, nullptr, nullptr, allocator_with_fit_mode::fit_mode::the_worst_fit);
 
     try
     {
 	//data_base db("OLDONWWWW", storage_interface<std::string, schemas_pool>::storage_strategy::filesystem);
-	data_base db_1("OLDONWWWW", storage_interface<std::string, schemas_pool>::storage_strategy::in_memory);
+	data_base db_1("NewDB", storage_interface<std::string, schemas_pool>::storage_strategy::filesystem);
 
 	auto path = "C:\\Users\\rob22\\CLionProjects\\cw_os\\cw\\database\\src\\test_command.txt";
 	//db.execute_command_from_file(path);
-	//db_1.insert_schemas_pool("main_pool1", schemas_pool());
-	//db_1.insert_schema("main_pool1", "hr", schema());
-	//db_1.insert_table("main_pool1", "hr", "schema_employees", table());
+	db_1.insert_schemas_pool("main_pool1", schemas_pool());
+	db_1.insert_schema("main_pool1", "hr", schema());
+	db_1.insert_table("main_pool1", "hr", "schema_employees", table());
 	//db_1.load_data_base_state();
 	//db_1.start_console_dialog();
 //	for (int i = 0; i < 1098; ++i)
@@ -88,10 +111,15 @@ int main()
 //	    //db_1.insert_data("main_pool1", "hr", "schema_employees", std::to_string(i), user_data(i,"Robs", "Bats"));
 //	}
 
-	for (int i = 0; i < 1800; ++i)
+	for (int i = 6666; i < 6667; ++i)
 	{
-	    //db_1.insert_data("main_pool1", "hr", "schema_employees", std::to_string(i), user_data(1, "Robs", "Hm"));
+	    //db_1.insert_data("main_pool1", "hr", "schema_employees", "key1", user_data(1, generateRandomString(5), "Hm"));
 	}
+
+//	for (int i = 0; i < 1800; ++i)
+//	{
+//	    db_1.dispose_user_data("main_pool1", "hr", "schema_employees", std::to_string(i));//, user_data(1, "Robs", "Hm"));
+//	}
 	//db_1.save_data_base_state();
 
 	//db_1.save_data_base_state();

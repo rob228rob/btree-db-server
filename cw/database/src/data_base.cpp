@@ -40,10 +40,10 @@ void data_base::throw_if_name_exist(std::string const &instance_name)
 }
 
 data_base::data_base(const std::string &instance_name, storage_strategy strategy, allocator* allocator)
-    : _data(std::make_unique<b_tree<std::string, schemas_pool>>(4, _default_string_comparer, allocator, nullptr))
+    : _data(std::make_unique<b_tree<std::string, schemas_pool>>(2, _default_string_comparer, allocator, nullptr))
 {
     throw_if_name_exist(instance_name);
-    //TODO: create filesystem logic for INSTANCES
+
     this->set_instance_name(instance_name);
     _instance_names.emplace(instance_name);
 
@@ -867,14 +867,14 @@ user_data data_base::obtain_data_in_filesystem(const std::string &pool_name, con
 
     if (!std::filesystem::exists(pool_path) || !std::filesystem::is_directory(pool_path))
     {
-	throw std::runtime_error("Could not find pool directory: " + pool_name);
+	throw std::runtime_error("Could not find pool: " + pool_name);
     }
 
     std::filesystem::path schema_path = pool_path / schema_name;
 
     if (!std::filesystem::exists(schema_path) || !std::filesystem::is_directory(schema_path))
     {
-	throw std::runtime_error("Could not find schema directory: " + schema_name);
+	throw std::runtime_error("Could not find schema: " + schema_name);
     }
 
     auto table_path = schema_path / (table_name + _file_format);
@@ -885,7 +885,9 @@ user_data data_base::obtain_data_in_filesystem(const std::string &pool_name, con
 	throw std::runtime_error("Could not obtain in undefined Table" + table_path.string());
     }
 
-    return storage_interface::obtain_in_filesystem(table_path, index_table_path, ud_key);
+    auto ud = storage_interface::obtain_in_filesystem(table_path, index_table_path, ud_key);
+
+    return ud;
 }
 
 void data_base::update_ud_in_filesystem(const std::string &pool_name, const std::string &schema_name, const std::string &table_name, const std::string &user_data_key, user_data &&value)
@@ -1201,7 +1203,7 @@ void data_base::start_console_dialog()
     {
 	std::cout << "Input operation from list: \n[1] insert_pool; [2] insert_schema; [3] insert_table \n[4] dispose_pool; "
 		  << "[5] dispose_schema; [6] dispose_table \n[7] insert_data; [8] dispose_data; [9] obtain_data\n[10] obtain_between_data "
-		  << "[11] update_data [12] exit\n[13] execute_file_command\n[14] save_db_state\n[15] load_db_state\n(Please, input only command)\n" << std::endl;
+		  << "[11] update_data [12] exit\n[13] execute_file_command\n[14] save_db_state\n[15] load_db_state\n[16] obtain_all\n(Please, input only text command)\n" << std::endl;
 
 	std::cin >> command;
 	if (command.empty())
@@ -1234,7 +1236,7 @@ void data_base::start_console_dialog()
 	    {
 		schemas_pool pool;
 		insert_schemas_pool(pool_name, std::move(pool));
-		std::cout << "Schema pool added successfully." << std::endl;
+		std::cout << "\nSchema pool added successfully.\n" << std::endl;
 	    }
 	    catch (const std::exception &e)
 	    {
@@ -1252,7 +1254,7 @@ void data_base::start_console_dialog()
 	    {
 		schema schm;
 		insert_schema(pool_name, schema_name, std::move(schm));
-		std::cout << "Schema added successfully." << std::endl;
+		std::cout << "\nSchema added successfully.\n" << std::endl;
 	    }
 	    catch (const std::exception &e)
 	    {
@@ -1267,7 +1269,7 @@ void data_base::start_console_dialog()
 	    {
 		table tbl;
 		insert_table(pool_name, schema_name, table_name, std::move(tbl));
-		std::cout << "Table added successfully." << std::endl;
+		std::cout << "\nTable added successfully.\n" << std::endl;
 	    }
 	    catch (const std::exception &e)
 	    {
@@ -1282,7 +1284,7 @@ void data_base::start_console_dialog()
 	    try
 	    {
 		dispose_schemas_pool(pool);
-		std::cout << "Schema pool removed successfully." << std::endl;
+		std::cout << "\nSchema pool removed successfully.\n" << std::endl;
 	    }
 	    catch (const std::exception &e)
 	    {
@@ -1300,12 +1302,50 @@ void data_base::start_console_dialog()
 	    {
 		user_data ud(std::stol(str_id), str_name, str_surname);
 		insert_data(pool_name, schema_name, table_name, user_data_key, std::move(ud));
-		std::cout << "Data has been successfully added." << std::endl;
+		std::cout << "\nData has been successfully added.\n" << std::endl;
 	    }
 	    catch (const std::exception &e)
 	    {
 		std::cerr << "Error inserting data: " << e.what() << std::endl;
 	    }
+	}
+	else if (action == "obtain_all")
+	{
+	    std::string pool_name, schema_name, table_name;
+	    read_path_to_table(pool_name, schema_name, table_name);
+	    try
+	    {
+		std::filesystem::path pool_path = _instance_path / pool_name;
+
+		if (!std::filesystem::exists(pool_path) && !std::filesystem::create_directory(pool_path))
+		{
+		    throw std::runtime_error("Could not create pool directory: " + pool_name);
+		}
+
+		std::filesystem::path schema_path = pool_path / schema_name;
+
+		if (!std::filesystem::exists(schema_path) && !std::filesystem::create_directory(schema_path))
+		{
+		    throw std::runtime_error("Could not create schema directory: " + schema_name);
+		}
+
+		auto table_path = schema_path / (table_name + _file_format);
+		auto index_table_path = schema_path / ("index_" + table_name + _file_format);
+
+		auto res = table::obtain_all_ud_in_filesystem(table_path, index_table_path);
+		std::cout << '\n';
+		for (auto const &item: res)
+		{
+		    std::cout << item.first << " value: " << item.second.to_string() << std::endl;
+		}
+		std::cout << '\n';
+		std::cout << "All data was obtaining successfully" << std::endl;
+	    }
+	    catch (const std::exception &e)
+	    {
+		std::cerr << "Error obtaining all data: " << e.what() << std::endl;
+	    }
+
 	}
 	else if (action == "obtain_data")
 	{
@@ -1342,7 +1382,8 @@ void data_base::start_console_dialog()
 
 	    try
 	    {
-		auto data_range = obtain_between_data(pool_name, schema_name, table_name, lower_bound, upper_bound, lower_inclusive == "1" ? true : false, upper_inclusive == "1" ? true : false);
+		auto data_range = obtain_between_data(pool_name, schema_name, table_name, lower_bound, upper_bound,
+						      lower_inclusive == "1", upper_inclusive == "1");
 		std::cout << "Range data obtained:\n";
 		for (const auto &ud: data_range)
 		{

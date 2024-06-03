@@ -3,6 +3,8 @@ project(cw_os)
 
 set(CMAKE_CXX_STANDARD 17)
 
+include_directories("D:/General Downloads/cpp-httplib-master/cpp-httplib-master")
+
 add_executable(cw_os
         cw/database/src/main.cpp
         #C:/Users/rob22/CLionProjects/cw_os/allocator/allocator/src/allocator_guardant.cpp
@@ -26,6 +28,9 @@ add_executable(cw_os
         allocator/allocator/src/allocator_test_utils.cpp
         allocator/allocator_boundary_tags/src/allocator_boundary_tags.cpp
         cw/string_pool/src/string_pool.cpp
+        #cw/server/src/db_server.cpp
+        #cw/server/include/db_server.h
+        #"cw/server/сient_requests.cpp"
 )
 
 

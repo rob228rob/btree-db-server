@@ -8,45 +8,67 @@
 #include <cstring>
 #include <filesystem>
 #include <fstream>
+#include <map>
 #include <memory>
 #include <mutex>
 #include <optional>
 #include <set>
 #include <string>
 #include <unordered_map>
+#include <vector>
 
 class string_pool final
 {
 private:
-    static std::set<std::string> _pool;
+    std::map<int64_t, std::shared_ptr<std::string>> _pool;
 
-    static string_pool* _instance;
+    static int64_t _pool_size;
 
-    static std::string _storage_filename;
+    static string_pool *_instance;
 
-    static std::fstream _file;
+    std::string _storage_filename = "string_pool.txt";
+
+    std::fstream _file;
 
     static std::mutex _mutex;
 
-    void load_from_file()
+    void load_data_from_file()
     {
 	std::lock_guard<std::mutex> lock(_mutex);
 
+	_file.open(std::filesystem::absolute(_storage_filename), std::ios::in);
 	if (!_file.is_open())
 	{
 	    throw std::runtime_error("Cannot open file for reading: " + _storage_filename);
 	}
 
 	std::string line;
+	int64_t index = 0;
 	while (std::getline(_file, line))
 	{
-	    size_t pos = line.find('#');
-	    std::string substring = line.substr(0, pos);
-	    _pool.emplace(substring);
+	    size_t pos1 = line.find('#');
+	    if (pos1 == std::string::npos)
+	    {
+		break;
+	    }
+
+	    std::string key = line.substr(0, pos1);
+
+	    std::string rest = line.substr(pos1 + 1);
+
+	    size_t pos2 = rest.find('#');
+	    if (pos2 == std::string::npos) continue;
+
+	    std::string value = rest.substr(0, pos2);
+
+	    _pool.emplace(std::stol(key), std::make_shared<std::string>(value));
+	    ++index;
 	}
+	_pool_size = index;
+	_file.close();
     }
 
-    void save_to_file()
+    [[maybe_unused]] void save_to_file()
     {
 	std::lock_guard<std::mutex> lock(_mutex);
 
@@ -59,14 +81,96 @@ private:
 
 	for (const auto &pair: _pool)
 	{
-	    _file << (pair) << '\n';
+	    _file << (pair).second.get() << '\n';
 	}
     }
 
-    void obtain_in_file()
+    std::pair<bool, std::string> obtain_in_file(size_t index)
     {
+	std::string result_str = "";
+	size_t ind = 0;
+	_file.open(std::filesystem::absolute(_storage_filename), std::ios::in);
+	if (!_file.is_open())
+	{
+	    throw std::runtime_error("Cannot open file for reading: " + _storage_filename);
+	}
+	std::string line;
+	bool is_found = false;
+	while (std::getline(_file, line))
+	{
+	    ++ind;
+	    std::istringstream line_stream(line);
+	    std::string segment;
+	    std::vector<std::string> seg_list;
 
+	    while (std::getline(line_stream, segment, '#'))
+	    {
+		seg_list.push_back(segment);
+	    }
+
+	    if (seg_list.size() != 2)
+	    {
+		throw std::runtime_error("string pool file failed");
+	    }
+
+	    std::string file_index = seg_list[0];
+	    std::string file_string = seg_list[1];
+
+	    auto ind = std::stol(file_index);
+
+	    if (ind == index)
+	    {
+		result_str = file_string;
+		is_found = true;
+		break;
+	    }
+	}
+
+	_file.close();
+	return std::make_pair(is_found, result_str);
     }
+
+    std::pair<bool, size_t> obtain_in_file(const std::string &str)
+    {
+	size_t result_ind = -1;
+	size_t ind = 0;
+	_file.open(std::filesystem::absolute(_storage_filename), std::ios::in);
+	if (!_file.is_open())
+	{
+	    throw std::runtime_error("Cannot open file for reading: " + _storage_filename);
+	}
+
+	std::string line;
+	bool is_found = false;
+	while (std::getline(_file, line))
+	{
+	    ++ind;
+	    std::istringstream line_stream(line);
+	    std::string segment;
+	    std::vector<std::string> seg_list;
+
+	    while (std::getline(line_stream, segment, '#'))
+	    {
+		seg_list.push_back(segment);
+	    }
+	    std::string file_index = seg_list[0];
+	    std::string file_string = seg_list[1];
+
+	    auto ind = std::stol(file_index);
+
+	    if (file_string == str)
+	    {
+		result_ind = ind;
+		is_found = true;
+		break;
+	    }
+	}
+
+	_file.close();
+	return std::make_pair(is_found, result_ind);
+    }
+
+private:
 
     string_pool()
     {
@@ -81,45 +185,33 @@ private:
 		error_message += std::strerror(errno);
 		throw std::runtime_error(error_message);
 	    }
-
+	    _pool_size = 0;
 	    ofs.close();
 	}
 
-	_file.open(path, std::ios::out | std::ios::in);
-	if (!_file.is_open())
-	{
-	    std::string error_message = "File did not open: ";
-	    error_message += std::strerror(errno);
-	    throw std::runtime_error(error_message);
-	}
-
-	load_from_file();
+	load_data_from_file();
     }
+public:
 
     ~string_pool()
     {
-	std::lock_guard<std::mutex> lock(_mutex);
 	if (_file.is_open())
 	{
 	    _file.close();
 	}
 
 	delete _instance;
-	//save_to_file();
     }
 
-    //TODO:: CREATE LOGIC TO WRITE READ AND DELETE IN RUNTIME!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
-
 public:
-    static string_pool &get_instance()
+    static string_pool *get_instance()
     {
-
 	if (!_instance)
 	{
-	    _instance = new string_pool;
+	    _instance = new string_pool();
 	}
 
-	return *_instance;
+	return _instance;
     }
 
     string_pool(const string_pool &) = delete;
@@ -132,27 +224,78 @@ public:
 
 public:
 
-    static const std::string &get_string(const std::string &str)
+    static const std::string &get_string(size_t index, bool get_string_by_index = false)
     {
-	auto& pool = get_instance();
+	auto instance = get_instance();
 
-	auto it = string_pool::_pool.find(str);
-
-	if (it == string_pool::_pool.end())
+	auto target = instance->obtain_in_file(index);
+	if (target.first)
 	{
-	    string_pool::_pool.emplace(str);
-	    add_string_to_file(str);
+	    auto it = instance->_pool.find(index);
+	    if (it != instance->_pool.end())
+	    {
+		return *(*it).second;
+	    }
+	    auto sh_ptr = std::make_shared<std::string>(target.second);
 
-	    const auto &result = *(_pool.find(str));
-	    return result;
+	    instance->_pool.emplace(index, sh_ptr);
+
+	    return *sh_ptr;
 	}
 
-	return *(it);
+	static const std::string empty_string;
+	return empty_string;
     }
+
+    static void delete_depricated()
+    {
+	auto instance = get_instance();
+
+
+    }
+
+    static size_t add_string(const std::string &str, bool get_string_by_index = false)
+    {
+	auto inst = get_instance();
+	std::string current_str;
+	if (get_string_by_index)
+	{
+	    current_str = get_string(std::stol(str));
+	    if (current_str.empty())
+	    {
+		current_str = str;
+	    }
+	}
+	else
+	{
+	    current_str = str;
+	}
+
+	auto find_result = inst->obtain_in_file(current_str);
+	if (find_result.first)
+	{
+	    return find_result.second;
+	}
+
+	auto out_str = std::to_string(_pool_size) + "#" + current_str + "#" + '\n';
+
+	inst->_file.open(std::filesystem::absolute(inst->_storage_filename), std::ios::app);
+	if (!inst->_file.is_open())
+	{
+	    throw std::runtime_error("Cannot open file for reading: " + inst->_storage_filename);
+	}
+
+	inst->_pool.emplace(_pool_size, std::make_shared<std::string>(str));
+	inst->_file << out_str;
+
+	inst->_file.close();
+	return _pool_size++;
+    }
+
 
 private:
 
-    static std::string find_in_file(std::string const &target_string)
+    std::string find_in_file(size_t index)
     {
 	_file.seekg(0);
 
@@ -161,31 +304,19 @@ private:
 	while (std::getline(_file, line))
 	{
 	    size_t pos = line.find('#');
-	    std::string substring = line.substr(0, pos);
+	    std::string file_ind_str = line.substr(0, pos);
+	    size_t file_index = std::stol(file_ind_str);
 
-	    if (substring == target_string)
+	    if (file_index == index)
 	    {
 		is_found = true;
 	    }
 	}
 
-	return is_found ? line : "" ;
+	return is_found ? line : "";
     }
 
-    static int add_string_to_file(const std::string &str)
-    {
-	if (str.empty())
-	{
-	    throw std::logic_error("String pool can't storage empty string :(");
-	}
-
-	_file << str  + "#" << '\n';
-	_pool.emplace(str);
-
-	return 0;
-    }
 };
-
 
 
 #endif//CW_OS_STRING_POOL_H

@@ -209,27 +209,21 @@ allocator_boundary_tags::allocator_boundary_tags(
 		 requested_block_size + get_block_meta_size() <= size_free_block)
 	{
 	    debug_with_guard("iteration; fit_mode: best-fit");
-	    if (size_for_best > size_free_block)
-	    {
-		size_for_best = size_free_block;
-		target = pointer_free_block;
-		next_to_target = current_block;
-		prev_to_target = prev_block;
-		target_size = size_free_block;
-	    }
+	    target = pointer_free_block;
+	    prev_to_target = prev_block;
+	    next_to_target = current_block;
+	    target_size = size_free_block;
+	    break;
 	}
 	else if (fit_mode == allocator_with_fit_mode::fit_mode::the_worst_fit &&
 		 requested_block_size + get_block_meta_size() <= size_free_block)
 	{
 	    debug_with_guard("iteration; fit_mode: worst-fit");
-	    if (size_for_worst < size_free_block)
-	    {
-		size_for_worst = size_free_block;
-		target = pointer_free_block;
-		next_to_target = current_block;
-		prev_to_target = prev_block;
-		target_size = size_free_block;
-	    }
+	    target = pointer_free_block;
+	    prev_to_target = prev_block;
+	    next_to_target = current_block;
+	    target_size = size_free_block;
+	    break;
 	}
 
 	prev_block = current_block;

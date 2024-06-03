@@ -4,12 +4,8 @@
 
 #include "../include/string_pool.h"
 
-string_pool* string_pool::_instance;
+int64_t string_pool::_pool_size = 0;
 
-std::string string_pool::_storage_filename = "string_pool.txt";
+string_pool *string_pool::_instance;
 
 std::mutex string_pool::_mutex;
-
-std::set<std::string> string_pool::_pool;
-
-std::fstream string_pool::_file;

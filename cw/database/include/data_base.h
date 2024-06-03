@@ -36,7 +36,6 @@ private:
 
 private:
 
-    //TODO: create logic to check duplicate names
     static std::set<std::string> _instance_names;
 
     std::unique_ptr<b_tree<std::string, schemas_pool>> _data;
@@ -228,20 +227,31 @@ private:
 	    const std::string &user_data_key,
 	    const user_data &value);
 
-    void dispose_pool_in_filesystem(std::string const &pool_name);
+    void dispose_pool_in_filesystem(
+	    std::string const &pool_name);
 
-    void dispose_schema_in_filesystem(std::string const &schemas_pool_name, std::string const &schema_name);
+    void dispose_schema_in_filesystem(
+	    std::string const &schemas_pool_name,
+	    std::string const &schema_name);
 
-    void dispose_table_in_filesystem(std::string const &schemas_pool_name, std::string const &schema_name, std::string const &table_name);
+    void dispose_table_in_filesystem(
+	    std::string const &schemas_pool_name,
+	    std::string const &schema_name,
+	    std::string const &table_name);
 
-    void dispose_ud_in_filesystem(std::string const &schemas_pool_name, std::string const &schema_name, std::string const &table_name, std::string const &user_data_key);
+    void dispose_ud_in_filesystem(
+	    std::string const &schemas_pool_name,
+	    std::string const &schema_name,
+	    std::string const &table_name,
+	    std::string const &user_data_key);
 
 private:
 
     void insert_pool_to_filesystem(
 	    const std::string &pool_name, schemas_pool &&value);
 
-    void insert_pool_to_filesystem(const std::string &pool_name, const schemas_pool &value);
+    void insert_pool_to_filesystem(
+	    const std::string &pool_name, const schemas_pool &value);
 
     void insert_schema_to_filesystem(
 	    std::string const &pool_name,
