@@ -16,7 +16,6 @@ table::table() : _data(std::make_unique<b_tree<std::string, user_data>>(4, _defa
     set_instance_name("table_name");
     this->_logger = nullptr;
     this->_storaged_strategy = storage_interface<std::string, user_data>::storage_strategy::in_memory;
-
 }
 
 table::table(
@@ -32,12 +31,10 @@ table::table(
     this->_logger = logger;
 
     set_strategy(storage_strategy);
-
 }
 
 table::~table()
 {
-
 }
 
 table::table(const table &other)
@@ -330,18 +327,21 @@ void table::update_ud_in_filesystem(std::filesystem::path const &table_path, std
 	file_key = string_pool::get_string(std::stol(key_ind));
 	if (user_data_key == file_key)
 	{
+	    create_backup(index_table_path);
 	    create_backup(table_path);
 	    try
 	    {
 		target_file.seekg(index_array[mid]);
 		target_file << out_str;
 		target_file.close();
+		delete_backup(index_table_path);
 		delete_backup(table_path);
 		return;
 	    }
 	    catch (...)
 	    {
 		target_file.close();
+		load_backup(index_table_path);
 		load_backup(table_path);
 		throw;
 	    }
@@ -568,126 +568,6 @@ std::map<std::string, user_data> table::obtain_between_ud_in_filesystem(
     data_file.close();
     return result;
 }
-//
-//std::map<std::string, user_data> table::obtain_between_in_filesystem(
-//	const std::string &lower_bound,
-//	const std::string &upper_bound,
-//	bool lower_bound_inclusive,
-//	bool upper_bound_inclusive)
-//{
-//    if (get_strategy() == storage_strategy::in_memory)
-//    {
-//	throw std::logic_error("access denied, invalid strategy");
-//    }
-//
-//    if (upper_bound < lower_bound)
-//    {
-//	throw std::logic_error("upper bound less than lower?? puc puc..");
-//    }
-//
-//    auto filename =get_instance_name() + _file_format;
-//    auto index_filename ="index_" + get_instance_name() + _file_format;
-//
-//    std::ifstream index_file(index_filename);
-//    throw_if_not_open(index_file);
-//
-//    std::vector<std::streamoff> index_array = load_index(index_filename);
-//
-//    std::ifstream data_file(filename);
-//    throw_if_not_open(data_file);
-//
-//    size_t left = 0;
-//    size_t right = index_array.size() - 1;
-//    std::string file_key;
-//    bool is_lower_found = false;
-//    while (left <= right)
-//    {
-//	size_t mid = left + (right - left) / 2;
-//	data_file.seekg(index_array[mid]);
-//	std::getline(data_file, file_key, '#');
-//
-//	if (lower_bound == file_key)
-//	{
-//	    left = mid;
-//	    is_lower_found = true;
-//	    break;
-//	}
-//	if (right == left)
-//	{
-//	    break;
-//	}
-//	if (file_key < lower_bound)
-//	{
-//	    left = mid + 1;
-//	}
-//	else
-//	{
-//	    right = mid - 1;
-//	}
-//    }
-//
-//    if (!is_lower_found && left >= index_array.size() - 1)
-//    {
-//	data_file.close();
-//	throw std::logic_error("left bound is not exist");
-//    }
-//
-//    size_t start_index = is_lower_found && (lower_bound_inclusive) ? left : left + 1;
-//    if (is_lower_found)
-//    {
-//	if (!lower_bound_inclusive)
-//	{
-//	    start_index = left + 1;
-//	}
-//	else
-//	{
-//	    start_index = left;
-//	}
-//    }
-//    else
-//    {
-//	if (file_key > lower_bound)
-//	{
-//	    start_index = left;
-//	}
-//	else
-//	{
-//	    start_index = left + 1;
-//	}
-//    }
-//
-//    std::map<std::string, user_data> result;
-//
-//    std::string readln;
-//    size_t pos;
-//    data_file.seekg(index_array[start_index]);
-//    while (std::getline(data_file, readln))
-//    {
-//	pos = readln.find('#');
-//	if (pos != std::string::npos)
-//	{
-//	    std::string current_key = readln.substr(0, pos);
-//
-//	    if (current_key >= upper_bound)
-//	    {
-//		if (current_key == upper_bound && upper_bound_inclusive)
-//		{
-//		    auto data = create_user_data(readln);
-//		    result.emplace(upper_bound, data);
-//		}
-//
-//		break;
-//	    }
-//
-//	    auto data = create_user_data(readln);
-//	    result.emplace(current_key, data);
-//	}
-//    }
-//
-//    data_file.close();
-//
-//    return result;
-//}
 
 void table::dispose_ud_from_filesystem(std::filesystem::path const &path, std::filesystem::path const &index_path, std::string const &key)
 {
@@ -734,6 +614,7 @@ void table::dispose_ud_from_filesystem(std::filesystem::path const &path, std::f
     }
 
     create_backup(path);
+    create_backup(index_path);
 
     if (is_found && index_array.size() == 1)
     {
@@ -746,11 +627,13 @@ void table::dispose_ud_from_filesystem(std::filesystem::path const &path, std::f
 	    decrease_index(index_array);
 	    save_index(index_array, index_path.string());
 	    delete_backup(path);
+	    delete_backup(index_path);
 	    return;
 	}
 	catch (...)
 	{
 	    load_backup(path);
+	    load_backup(index_path);
 	    throw;
 	}
     }
@@ -793,10 +676,12 @@ void table::dispose_ud_from_filesystem(std::filesystem::path const &path, std::f
     catch (...)
     {
 	load_backup(path);
+	load_backup(index_path);
 	throw;
     }
 
     delete_backup(path);
+    delete_backup(index_path);
 }
 
 void table::insert_ud_to_filesystem(std::filesystem::path const &path, std::filesystem::path const &index_path, std::string const &key, user_data const &ud)
@@ -1020,7 +905,7 @@ void table::insert_ud_to_filesystem(std::filesystem::path const &path, std::file
     }
 
     create_backup(path);
-
+    create_backup(index_path);
     bool is_target_greater = file_key < key;
 
     if (left == index_array.size() - 1 && is_target_greater)
@@ -1037,10 +922,12 @@ void table::insert_ud_to_filesystem(std::filesystem::path const &path, std::file
 	catch (...)
 	{
 	    load_backup(path);
+	    load_backup(index_path);
 	    throw;
 	}
 
 	delete_backup(path);
+	delete_backup(index_path);
 	return;
     }
 
@@ -1058,30 +945,34 @@ void table::insert_ud_to_filesystem(std::filesystem::path const &path, std::file
 
 	std::string src_line;
 	size_t pos;
+	bool is_found_insertion_position = false;
 	while (std::getline(data_file, src_line))
 	{
-	    pos = src_line.find('#');
-	    if (pos != std::string::npos)
+	    if (!is_found_insertion_position)
 	    {
-		std::string key_index = src_line.substr(0, pos);
-		std::string current_key = string_pool::get_string(std::stol(key_index));
-		if (current_key == file_key)
+		pos = src_line.find('#');
+		if (pos != std::string::npos)
 		{
-		    if (is_target_greater)
+		    std::string key_index = src_line.substr(0, pos);
+		    std::string current_key = string_pool::get_string(std::stol(key_index));
+		    if (current_key == file_key)
 		    {
-			tmp_file << src_line << std::endl;
-			tmp_file << out_str << std::endl;
-		    }
-		    else
-		    {
-			tmp_file << out_str << std::endl;
-			tmp_file << src_line << std::endl;
-		    }
+			is_found_insertion_position = true;
+			if (is_target_greater)
+			{
+			    tmp_file << src_line << std::endl;
+			    tmp_file << out_str << std::endl;
+			}
+			else
+			{
+			    tmp_file << out_str << std::endl;
+			    tmp_file << src_line << std::endl;
+			}
 
-		    continue;
+			continue;
+		    }
 		}
 	    }
-
 	    tmp_file << src_line << std::endl;
 	}
 
@@ -1095,10 +986,12 @@ void table::insert_ud_to_filesystem(std::filesystem::path const &path, std::file
     }
     catch (...)
     {
+	load_backup(index_path);
 	load_backup(path);
 	throw;
     }
 
+    delete_backup(index_path);
     delete_backup(path);
 }
 

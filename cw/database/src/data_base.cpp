@@ -1006,6 +1006,10 @@ void data_base::dispose_pool_in_filesystem(const std::string &pool_name)
 	    throw std::runtime_error("Could not dispose pool directory: " + pool_path.string() + " Error: " + e.what());
 	}
     }
+    else
+    {
+	throw std::runtime_error("Could not find pool directory: " + pool_path.string());
+    }
 }
 
 void data_base::dispose_schema_in_filesystem(const std::string &pool_name, const std::string &schema_name)

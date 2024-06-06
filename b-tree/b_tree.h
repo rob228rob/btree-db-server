@@ -599,7 +599,6 @@ tvalue b_tree<tkey, tvalue>::dispose(
     {
 	std::vector<typename associative_container<tkey, tvalue>::key_value_pair> range;
 
-	//TODO: find a path to lower_bound and get prev value;
 	b_tree<tkey, tvalue>::infix_const_iterator it = cbegin_infix();
 
 	while ((it != cend_infix()) &&
