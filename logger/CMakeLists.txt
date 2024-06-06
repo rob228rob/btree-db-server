@@ -6,6 +6,8 @@ project(mp_os_lggr
 
 set(CMAKE_CXX_STANDARD 17)
 
+
+
 add_subdirectory(client_logger)
 add_subdirectory(logger)
 add_subdirectory(server_logger)

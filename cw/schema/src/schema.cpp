@@ -11,16 +11,10 @@
 
 std::function<int(const std::string &, const std::string &)> schema::_default_string_comparer = [](const std::string &a, const std::string &b) -> int { return a.compare(b); };
 
-schema::schema() : _data(std::make_unique<b_tree<std::string, table>>(4,_default_string_comparer, nullptr, nullptr))
+schema::schema() : _data(std::make_unique<b_tree<std::string, table>>(4, _default_string_comparer, nullptr, nullptr))
 {
     this->_storaged_strategy = storage_interface<std::string, table>::storage_strategy::in_memory;
     this->_logger = nullptr;
-    _storage_filename = "C:\\Users\\rob22\\CLionProjects\\cw_os\\cw\\table.txt";
-
-    if (this->_storaged_strategy == storage_interface<std::string, table>::storage_strategy::filesystem)
-    {
-	deserialize();
-    }
 }
 
 schema::schema(
@@ -29,10 +23,9 @@ schema::schema(
 	logger *logger,
 	const std::function<int(const std::string &, const std::string &)> &keys_comparer,
 	storage_strategy storage_strategy)
-    : _data(std::make_unique<b_tree<std::string, table>>(t, keys_comparer, allocator, logger))
+    : _data(std::make_unique<b_tree<std::string, table>>(4, keys_comparer, allocator, logger))
 {
-    //TODO: add TableID and generate filename with uid
-    _storage_filename = "C:\\Users\\rob22\\CLionProjects\\cw_os\\cw\\schema.txt";
+
     this->_logger = nullptr;
     set_strategy(storage_strategy);
 
@@ -44,11 +37,6 @@ schema::schema(
 
 schema::~schema()
 {
-
-    if (this->_storaged_strategy == storage_interface<std::string, table>::storage_strategy::filesystem)
-    {
-	schema::serialize();
-    }
 }
 
 schema::schema(const schema &other)
@@ -102,7 +90,7 @@ void schema::insert(const std::string &key, const table &value)
     }
     catch (std::exception const &e)
     {
-	error_with_guard("key duplicate: [ " + key + " ]");
+	//error_with_guard("key duplicate: [ " + key + " ]");
 	throw;
     }
 }
@@ -115,7 +103,7 @@ void schema::insert(const std::string &key, table &&value)
     }
     catch (std::exception const &e)
     {
-	error_with_guard("key duplicate: [ " + key + " ]");
+	//error_with_guard("key duplicate: [ " + key + " ]");
 	throw;
     }
 }
@@ -174,12 +162,10 @@ void schema::dispose(const std::string &key)
 
 void schema::serialize()
 {
-
 }
 
 void schema::deserialize()
 {
-
 }
 
 void schema::set_storage_filename(std::string &filename)
@@ -192,22 +178,6 @@ void schema::set_storage_filename(std::string &&filename)
     this->_storage_filename = std::move(filename);
 }
 
-void schema::print_table()
-{
-    //    auto it = _data->begin_infix();
-    //    auto it_end  = _data->end_infix();
-    //
-    //    while (it != it_end)
-    //    {
-    //	user_data ud = std::get<3>(*it);
-    //	std::cout << std::get<2>(*it) << " " << ud.get_name() << " " << ud.get_surname()<< " " << ud.get_id() << " " << std::endl;
-    //	++it;
-    //    }
-}
-
-/*
- * TODO: Create logic to load-save META-data from class besides _data(b-tree)
- */
 schema schema::load_schema_from_filesystem(const std::string &filename)
 {
     schema result;
@@ -215,7 +185,7 @@ schema schema::load_schema_from_filesystem(const std::string &filename)
     std::ifstream input_file(filename);
     if (!input_file.is_open())
     {
-	error_with_guard("file for deserializing did not open! file_name: [ " + filename + " ]");
+	//error_with_guard("file for deserializing did not open! file_name: [ " + filename + " ]");
 	throw std::logic_error("file did not open, filename: " + filename);
     }
 
@@ -236,9 +206,7 @@ schema schema::load_schema_from_filesystem(const std::string &filename)
     input_file.close();
     return result;
 }
-/*
- * TODO: Create logic to load-save META-data from class besides _data(b-tree)
- */
+
 void schema::save_schema_to_filesystem(const std::string &filename)
 {
     std::string filename_copy = filename.length() == 0 ? _storage_filename : filename;
@@ -246,7 +214,7 @@ void schema::save_schema_to_filesystem(const std::string &filename)
     std::ofstream output_file(filename_copy);
     if (!output_file.is_open())
     {
-	error_with_guard("file for serializing did not open! file_name: [ " + filename_copy + " ]");
+	//error_with_guard("file for serializing did not open! file_name: [ " + filename_copy + " ]");
 	return;
     }
 
@@ -261,7 +229,7 @@ void schema::save_schema_to_filesystem(const std::string &filename)
 
 	auto table_filename = string_key + schema::_file_format;
 	//target_table.save_data_to_filesystem(table_filename);
-    	++it;
+	++it;
     }
 
     output_file.close();
@@ -276,7 +244,7 @@ void schema::insert_schema_to_filesystem(const std::filesystem::path &path)
 	auto target_tbl = std::get<3>(*schm_it);
 
 	std::filesystem::path table_file_path = path / (table_name + _file_format);
-//TODO: be cateful, i deleted file open close
+
 	target_tbl.insert_table_to_filesystem(table_file_path);
 
 	++schm_it;

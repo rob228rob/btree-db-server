@@ -15,12 +15,10 @@ class schemas_pool :
     friend class data_base;
 
 private:
+
     static std::function<int(const std::string &, const std::string &)> _default_string_comparer;
 
     std::unique_ptr<b_tree<std::string, schema>> _data;
-
-    //TODO: implement logic in Constructor
-    inline static std::string _absolute_directory_name = "C:\\Users\\rob22\\CLionProjects\\cw_os\\cw\\filesystem\\schemas_pool\\";
 
 public:
     schemas_pool();
@@ -52,7 +50,7 @@ public:
     void dispose(const std::string &key) override;
 
 private:
-    //TODO: Call serialize in destructor and deserialize in constructor, and Private access
+
     void serialize() override;
 
     void deserialize() override;

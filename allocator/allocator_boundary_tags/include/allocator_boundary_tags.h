@@ -10,16 +10,21 @@
 #include "../../common/include/typename_holder.h"
 #include <mutex>
 
-class allocator_boundary_tags final :
-	private allocator_guardant,
-	public allocator_test_utils,
-	public allocator_with_fit_mode,
-	private logger_guardant,
-	private typename_holder
+class allocator_boundary_tags final:
+    private allocator_guardant,
+    public allocator_test_utils,
+    public allocator_with_fit_mode,
+    private logger_guardant,
+    private typename_holder
 {
+
 private:
 
     void *_trusted_memory;
+
+    static constexpr const size_t _size_allocator_meta = sizeof(logger*) + sizeof(allocator*) + sizeof(allocator_with_fit_mode::fit_mode)  +  sizeof(size_t) +  sizeof(std::mutex)  + sizeof(void*);
+
+    static constexpr const size_t _size_load_block_meta = sizeof(size_t) + 3 * sizeof(void*);
 
 public:
 
@@ -56,55 +61,62 @@ public:
 
 public:
 
+    std::string get_typename() override
+    {
+	return "allocator_boundary_tags";
+    }
+
+    std::string get_fit_mode_str() override;
+
+
     inline void set_fit_mode(
 	    allocator_with_fit_mode::fit_mode mode) override;
+
+public:
+
+    std::vector<block_info> get_blocks_info(size_t& full_free_size) const noexcept override;
 
 private:
 
     inline allocator *get_allocator() const override;
 
-public:
-
-    std::vector<allocator_test_utils::block_info> get_blocks_info() const noexcept override;
-
-private:
-
     inline logger *get_logger() const override;
-
-    inline size_t get_global_size() const;
-
-    inline fit_mode get_fit_mode() const;
-
-    inline std::mutex *get_mutex() const;
-
-private:
-
-    size_t get_ancillary_space_size() const noexcept;
 
     inline std::string get_typename() const noexcept override;
 
-    inline void *get_next_block_adress(void *block_adress) const noexcept;
+private:
 
-    inline void *get_prev_block_adress(void *block_adress) const noexcept;
+    inline std::mutex& get_mutex() noexcept;
 
-    inline size_t get_block_size(void *block_adress) const noexcept;
+public:
 
-    inline allocator *get_parent_alc(void *block_adress) const noexcept;
+    inline allocator_with_fit_mode::fit_mode& get_fit_mode() const noexcept;
 
-    inline void *get_first_block() const noexcept;
+private:
 
-    inline size_t get_block_meta_size() const noexcept;
+    void* get_first_suitable(size_t need_size)  const noexcept;
 
-    size_t get_diff_blocks(void *first_block, void *second_block) const noexcept;
+    void* get_worst_suitable(size_t need_size) const noexcept;
 
-    void set_first_block(void *adress) noexcept;
+    void* get_best_suitable(size_t need_size)  const noexcept;
 
-    void set_prev_block_adress(void *block_adress, void *prev_block_adress) noexcept;
+    inline size_t get_size_full() const noexcept;
 
-    void set_next_block_adress(void *block_adress, void *next_block_adress) noexcept;
+    inline size_t get_size_current_load_block(void* current_block) const noexcept;
 
-    void *get_memory_begining() const noexcept;
+    inline void** get_next_load_block(void* current_block) const noexcept;
 
+    inline void** get_prev_load_block(void* current_block) const noexcept;
+
+    inline void** get_parrent_for_current_load_block(void* current_block) const noexcept;
+
+    inline void** get_first_block() const noexcept;
+
+    inline size_t get_next_free_size(void* loaded_block) const noexcept;
+
+    static std::string get_info_in_string(const std::vector<allocator_test_utils::block_info>& vec) noexcept;
+
+    static std::string get_dump(char* at, size_t size);
 };
 
 #endif //MATH_PRACTICE_AND_OPERATING_SYSTEMS_ALLOCATOR_ALLOCATOR_BOUNDARY_TAGS_H

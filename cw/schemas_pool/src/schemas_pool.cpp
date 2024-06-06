@@ -10,7 +10,6 @@ std::function<int(const std::string &, const std::string &)> schemas_pool::_defa
 
 schemas_pool::schemas_pool() : _data(std::make_unique<b_tree<std::string, schema>>(4, _default_string_comparer, nullptr, nullptr))
 {
-    set_instance_name("schema_pool");
     this->_logger = nullptr;
 }
 
@@ -54,7 +53,7 @@ void schemas_pool::insert(const std::string &key, const schema &value)
     }
     catch (std::exception const &e)
     {
-	error_with_guard("Exception in insert: " + std::string(e.what()));
+	//error_with_guard("Exception in insert: " + std::string(e.what()));
 	throw;
     }
 }
@@ -67,7 +66,7 @@ void schemas_pool::insert(const std::string &key, schema &&value)
     }
     catch (std::exception const &e)
     {
-	error_with_guard("Exception in insert: " + std::string(e.what()));
+	//error_with_guard("Exception in insert: " + std::string(e.what()));
 	throw;
     }
 }
@@ -103,7 +102,7 @@ std::map<std::string, schema> schemas_pool::obtain_between(const std::string &lo
     }
     catch (std::exception const &e)
     {
-	error_with_guard("Exception in obtain_between: " + std::string(e.what()));
+	//error_with_guard("Exception in obtain_between: " + std::string(e.what()));
 	throw;
     }
 }
@@ -116,7 +115,6 @@ void schemas_pool::dispose(const std::string &key)
     }
     catch (std::exception const &e)
     {
-	error_with_guard("Exception in dispose: " + std::string(e.what()));
 	throw;
     }
 }
@@ -129,7 +127,6 @@ schemas_pool schemas_pool::load_schemas_pool_from_filesystem(const std::string &
 
     if (!input_file.is_open())
     {
-	error_with_guard("file for deserializing did not open! file_name: [ " + filename + " ]");
 	return new_pool;
     }
 
@@ -159,7 +156,7 @@ void schemas_pool::save_schemas_pool_to_filesystem(const std::string &filename)
     std::ofstream output_file(filename_copy);
     if (!output_file.is_open())
     {
-	error_with_guard("file for serializing did not open! file_name: [ " + filename_copy + " ]");
+	//error_with_guard("file for serializing did not open! file_name: [ " + filename_copy + " ]");
 	return;
     }
 

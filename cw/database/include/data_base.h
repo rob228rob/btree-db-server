@@ -18,9 +18,10 @@ public:
 
     static std::function<int(const std::string &, const std::string &)> _default_string_comparer;
 
-
-
+    static std::function<int(const int &, const int &)> _int_comparer;
 private:
+
+    std::mutex _mtx;
 
     friend class string_pool;
 
@@ -32,35 +33,9 @@ private:
 
     friend class schema_pool;
 
-    static inline std::string _instances_filename = "../../filesystem/instances/instances_list.txt";
-
 private:
-
-    static std::set<std::string> _instance_names;
 
     std::unique_ptr<b_tree<std::string, schemas_pool>> _data;
-
-private:
-
-    data_base();
-
-public:
-
-    explicit data_base(std::string const &instance_name, storage_strategy _strategy = storage_strategy::in_memory, allocator* allocator = nullptr);
-
-    ~data_base() override;
-
-    data_base(const data_base &other) = delete;
-
-    data_base(data_base &&other) noexcept;
-
-    data_base &operator=(const data_base &other) = delete;
-
-    data_base &operator=(data_base &&other) noexcept;
-
-private:
-
-    static void throw_if_key_invalid(std::string const &key);
 
 public:
 
@@ -160,6 +135,25 @@ public:
 	    std::string const &schema_name,
 	    std::string const &table_name,
 	    std::string const &user_data_key);
+
+private:
+
+    static void throw_if_key_invalid(std::string const &key);
+
+public:
+
+    explicit data_base(std::string const &instance_name, storage_strategy _strategy = storage_strategy::in_memory, allocator* allocator = nullptr);
+
+    ~data_base() override;
+
+    data_base(const data_base &other) = delete;
+
+    data_base(data_base &&other) noexcept;
+
+    data_base &operator=(const data_base &other) = delete;
+
+    data_base &operator=(data_base &&other) noexcept;
+
 
 private:
 

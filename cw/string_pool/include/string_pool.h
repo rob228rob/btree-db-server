@@ -144,6 +144,10 @@ private:
 	bool is_found = false;
 	while (std::getline(_file, line))
 	{
+	    if (line.empty())
+	    {
+		break;
+	    }
 	    ++ind;
 	    std::istringstream line_stream(line);
 	    std::string segment;

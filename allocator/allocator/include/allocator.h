@@ -1,6 +1,7 @@
 #ifndef MATH_PRACTICE_AND_OPERATING_SYSTEMS_ALLOCATOR_H
 #define MATH_PRACTICE_AND_OPERATING_SYSTEMS_ALLOCATOR_H
 
+#include <string>
 #include <cstddef>
 #include <utility>
 
@@ -14,7 +15,11 @@ public:
     using block_pointer_t = void *;
 
 public:
-    
+
+    virtual std::string get_typename() = 0;
+
+    virtual std::string get_fit_mode_str() = 0;
+
     virtual ~allocator() noexcept = default;
 
 public:

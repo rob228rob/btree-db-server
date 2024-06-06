@@ -21,14 +21,9 @@ class schema :
 
 private:
 
-    //TODO: add incrementing logic
-    static size_t _unique_id;
-
     static std::function<int(const std::string& , const std::string&)> _default_string_comparer;
 
     std::string _storage_filename;
-
-    inline static std::string _absolute_directory_name = "C:\\Users\\rob22\\CLionProjects\\cw_os\\cw\\filesystem\\schemas\\";
 
     std::unique_ptr<b_tree<std::string, table>> _data;
 
@@ -39,20 +34,6 @@ public:
 		   logger* logger = nullptr,
 		   const std::function<int(const std::string&, const std::string&)>& keys_comparer = _default_string_comparer,
 		    storage_strategy storaged_strategy = storage_strategy::in_memory);
-
-public:
-
-    schema();
-
-    ~schema() override;
-
-    schema(const schema& other);
-
-    schema(schema&& other) noexcept;
-
-    schema& operator=(const schema& other);
-
-    schema& operator=(schema&& other) noexcept;
 
 public:
 
@@ -69,6 +50,20 @@ public:
     std::map<std::string, table> obtain_between(std::string const &lower_bound, std::string const &upper_bound, bool lower_bound_inclusive, bool upper_bound_inclusive) override;
 
     void dispose(const std::string &key) override;
+
+public:
+
+    schema();
+
+    ~schema() override;
+
+    schema(const schema& other);
+
+    schema(schema&& other) noexcept;
+
+    schema& operator=(const schema& other);
+
+    schema& operator=(schema&& other) noexcept;
 
 private:
 

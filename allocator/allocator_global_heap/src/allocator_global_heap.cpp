@@ -1,7 +1,4 @@
-#include </home/mp_os/common/include/not_implemented.h>
-#include <typeinfo>
-#include "/home/mp_os/allocator/allocator_global_heap/include/allocator_global_heap.h"
-#include "/home/mp_os/logger/logger/include/logger_guardant.h"
+#include "../../allocator_global_heap/include/allocator_global_heap.h"
 
 allocator_global_heap::allocator_global_heap(
     logger *logger) : _logger(logger)
@@ -84,7 +81,3 @@ inline logger *allocator_global_heap::get_logger() const
     return _logger;
 }
 
-inline std::string allocator_global_heap::get_typename() const noexcept
-{
-    return typeid(*this).name();
-}

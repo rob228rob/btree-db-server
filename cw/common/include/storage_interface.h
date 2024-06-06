@@ -103,6 +103,10 @@ protected:
 
     allocator *get_allocator() const override;
 
+    void set_logger(logger *lg) ;
+
+    void set_allocator(allocator* alc);
+
 protected:
 
     static std::vector<std::streamoff> load_index(const std::string &index_filename);
@@ -119,9 +123,7 @@ protected:
 
     static void throw_if_not_open(const std::ifstream &file);
 
-    static void dispose_from_filesystem(const std::filesystem::path &data_path, const std::filesystem::path &index_path, const std::string &key);
-
-    static int get_index_by_bin_search(std::ifstream &src, const std::vector<std::streamoff> &index_array, const std::string &key);
+    [[maybe_unused]] static int get_index_by_bin_search(std::ifstream &src, const std::vector<std::streamoff> &index_array, const std::string &key);
 
     static user_data obtain_in_filesystem(const std::filesystem::path &data_path, const std::filesystem::path &index_path, const std::string &key);
 
@@ -131,6 +133,19 @@ protected:
 
     static void create_backup(const std::filesystem::path &source_path);
 };
+
+template<typename tkey, typename tvalue>
+void storage_interface<tkey, tvalue>::set_logger(logger* lg)
+{
+    _logger = lg;
+}
+
+template<typename tkey, typename tvalue>
+void storage_interface<tkey, tvalue>::set_allocator(allocator *alc)
+{
+    _allocator = alc;
+}
+
 
 template<typename tkey, typename tvalue>
 void storage_interface<tkey, tvalue>::throw_if_exceeds_length_limit(const std::string &str)
@@ -313,7 +328,7 @@ void storage_interface<tkey, tvalue>::create_backup(const std::filesystem::path 
 
 template<typename tkey, typename tvalue>
 user_data storage_interface<tkey, tvalue>::obtain_in_filesystem(const std::filesystem::path &data_path, const std::filesystem::path &index_path, const std::string &key) {
-//TODO: MDAAA 0 1 ind FAILED!!! OR NOT)))))
+
     std::vector<std::streamoff> index_array = load_index(index_path.string());
 
     if (index_array.empty())
@@ -428,7 +443,7 @@ std::vector<std::streamoff> storage_interface<tkey, tvalue>::load_index(std::str
 }
 
 template<typename tkey, typename tvalue>
-int storage_interface<tkey, tvalue>::get_index_by_bin_search(std::ifstream &src, std::vector<std::streamoff> const &index_array, std::string const &key)
+[[maybe_unused]] int storage_interface<tkey, tvalue>::get_index_by_bin_search(std::ifstream &src, std::vector<std::streamoff> const &index_array, std::string const &key)
 {
     throw_if_not_open(src);
 
@@ -456,7 +471,7 @@ int storage_interface<tkey, tvalue>::get_index_by_bin_search(std::ifstream &src,
 	}
 	else
 	{
-	    right = mid - 1;
+	    right = mid;
 	}
     }
 

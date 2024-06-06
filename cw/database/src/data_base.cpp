@@ -3,50 +3,55 @@
 //
 
 #include "../include/data_base.h"
+#include "../../../allocator/allocator_boundary_tags/include/allocator_boundary_tags.h"
 #include <filesystem>
 #include <fstream>
 #include <iostream>
 
-std::function<int(const std::string &, const std::string &)> data_base::_default_string_comparer = [](const std::string &a, const std::string &b) -> int { return a.compare(b); };
+//std::function<int(const std::string &, const std::string &)> data_base::_default_string_comparer = [](const std::string &a, const std::string &b) -> int { return a.compare(b); };
 
-std::set<std::string> data_base::_instance_names;
-
-data_base::data_base()
-    : _data(std::make_unique<b_tree<std::string, schemas_pool>>(4, _default_string_comparer, nullptr, nullptr))
-{
-    std::string inst_name = "data_base";
-    this->set_instance_name(inst_name);
-
-    auto it = _instance_names.find(inst_name);
-    if (it != _instance_names.end())
+struct custom_compare {
+    int operator()(int const &a, int const &b) const
     {
-	throw std::logic_error("duplicate instance name");
+	if (a < b)
+	{
+	    return -1;
+	}
+	else if (a > b)
+	{
+	    return 1;
+	}
+
+	return 0;
     }
+};
 
-    _instance_names.emplace(inst_name);
-
-    this->_logger = nullptr;
-    this->set_strategy(storage_strategy::in_memory);
-}
-
-void data_base::throw_if_name_exist(std::string const &instance_name)
-{
-    throw_if_key_invalid(instance_name);
-    auto it = _instance_names.find(instance_name);
-    if (it != _instance_names.end())
+struct string_compare {
+    int operator()(std::string const &a, std::string const &b) const
     {
-	throw std::logic_error("duplicate instance name");
+	if (a < b)
+	{
+	    return -1;
+	}
+	else if (a > b)
+	{
+	    return 1;
+	}
+
+	return 0;
     }
-}
+};
 
-data_base::data_base(const std::string &instance_name, storage_strategy strategy, allocator* allocator)
-    : _data(std::make_unique<b_tree<std::string, schemas_pool>>(2, _default_string_comparer, allocator, nullptr))
+
+std::function<int(const int &, const int &)> data_base::_int_comparer = custom_compare();
+
+std::function<int(const std::string &, const std::string &)> data_base::_default_string_comparer = string_compare();
+
+
+data_base::data_base(const std::string &instance_name, storage_strategy strategy, allocator *allocator)
+    : _data(std::make_unique<b_tree<std::string, schemas_pool>>(8, _default_string_comparer, allocator, nullptr))
 {
-    throw_if_name_exist(instance_name);
-
-    this->set_instance_name(instance_name);
-    _instance_names.emplace(instance_name);
-
+    this->_allocator = allocator;
     this->_logger = nullptr;
     this->set_strategy(strategy);
 
@@ -61,7 +66,6 @@ data_base::data_base(const std::string &instance_name, storage_strategy strategy
     }
     catch (...)
     {
-	_instance_names.erase(instance_name);
 	throw;
     }
 }
@@ -145,6 +149,8 @@ void data_base::serialize()
 void data_base::insert_schemas_pool(const std::string &schemas_pool_name, const schemas_pool &value)
 {
     throw_if_key_invalid(schemas_pool_name);
+
+    std::lock_guard<std::mutex> lock(_mtx);
     switch (this->get_strategy())
     {
 	case storage_strategy::in_memory:
@@ -159,6 +165,8 @@ void data_base::insert_schemas_pool(const std::string &schemas_pool_name, const 
 void data_base::insert_schemas_pool(const std::string &schemas_pool_name, schemas_pool &&value)
 {
     throw_if_key_invalid(schemas_pool_name);
+
+    std::lock_guard<std::mutex> lock(_mtx);
     switch (this->get_strategy())
     {
 	case storage_strategy::in_memory:
@@ -175,6 +183,7 @@ void data_base::insert_schema(const std::string &schemas_pool_name, const std::s
     throw_if_key_invalid(schemas_pool_name);
     throw_if_key_invalid(schema_name);
 
+    std::lock_guard<std::mutex> lock(_mtx);
     switch (this->get_strategy())
     {
 	case storage_strategy::in_memory: {
@@ -193,6 +202,7 @@ void data_base::insert_schema(const std::string &schemas_pool_name, const std::s
     throw_if_key_invalid(schemas_pool_name);
     throw_if_key_invalid(schema_name);
 
+    std::lock_guard<std::mutex> lock(_mtx);
     switch (this->get_strategy())
     {
 	case storage_strategy::in_memory: {
@@ -216,6 +226,7 @@ void data_base::insert_table(
     throw_if_key_invalid(schema_name);
     throw_if_key_invalid(table_name);
 
+    std::lock_guard<std::mutex> lock(_mtx);
     switch (this->get_strategy())
     {
 	case storage_strategy::in_memory: {
@@ -240,6 +251,7 @@ void data_base::insert_table(
     throw_if_key_invalid(schema_name);
     throw_if_key_invalid(table_name);
 
+    std::lock_guard<std::mutex> lock(_mtx);
     switch (this->get_strategy())
     {
 	case storage_strategy::in_memory: {
@@ -266,6 +278,7 @@ void data_base::insert_data(
     throw_if_key_invalid(table_name);
     throw_if_key_invalid(user_data_key);
 
+    std::lock_guard<std::mutex> lock(_mtx);
     switch (this->get_strategy())
     {
 	case storage_strategy::in_memory: {
@@ -293,6 +306,7 @@ void data_base::insert_data(
     throw_if_key_invalid(table_name);
     throw_if_key_invalid(user_data_key);
 
+    std::lock_guard<std::mutex> lock(_mtx);
     switch (this->get_strategy())
     {
 	case storage_strategy::in_memory: {
@@ -315,6 +329,7 @@ user_data data_base::obtain_data(const std::string &schemas_pool_name, const std
     throw_if_key_invalid(table_name);
     throw_if_key_invalid(user_data_key);
 
+    std::lock_guard<std::mutex> lock(_mtx);
     switch (this->get_strategy())
     {
 	case storage_strategy::in_memory: {
@@ -338,6 +353,7 @@ void data_base::update_data(const std::string &schemas_pool_name, const std::str
     throw_if_key_invalid(table_name);
     throw_if_key_invalid(user_data_key);
 
+    std::lock_guard<std::mutex> lock(_mtx);
     switch (this->get_strategy())
     {
 	case storage_strategy::in_memory: {
@@ -360,6 +376,7 @@ void data_base::update_data(const std::string &schemas_pool_name, const std::str
     throw_if_key_invalid(table_name);
     throw_if_key_invalid(user_data_key);
 
+    std::lock_guard<std::mutex> lock(_mtx);
     switch (this->get_strategy())
     {
 	case storage_strategy::in_memory: {
@@ -379,6 +396,7 @@ void data_base::dispose_schemas_pool(const std::string &schemas_pool_name)
 {
     throw_if_key_invalid(schemas_pool_name);
 
+    std::lock_guard<std::mutex> lock(_mtx);
     switch (this->get_strategy())
     {
 	case storage_strategy::in_memory:
@@ -395,6 +413,7 @@ void data_base::dispose_schema(const std::string &schemas_pool_name, const std::
     throw_if_key_invalid(schemas_pool_name);
     throw_if_key_invalid(schema_name);
 
+    std::lock_guard<std::mutex> lock(_mtx);
     switch (this->get_strategy())
     {
 	case storage_strategy::in_memory: {
@@ -414,6 +433,7 @@ void data_base::dispose_table(const std::string &schemas_pool_name, const std::s
     throw_if_key_invalid(schema_name);
     throw_if_key_invalid(table_name);
 
+    std::lock_guard<std::mutex> lock(_mtx);
     switch (this->get_strategy())
     {
 	case storage_strategy::in_memory: {
@@ -439,6 +459,7 @@ void data_base::dispose_user_data(
     throw_if_key_invalid(table_name);
     throw_if_key_invalid(user_data_key);
 
+    std::lock_guard<std::mutex> lock(_mtx);
     switch (this->get_strategy())
     {
 	case storage_strategy::in_memory: {
@@ -467,6 +488,39 @@ void data_base::load_data_base_state()
     {
 	throw std::runtime_error("Database directory does not exist: " + db_storage_path.string());
     }
+    std::lock_guard<std::mutex> lock(_mtx);
+
+    auto temp_file_path = _instance_path / ("meta.txt");
+    if (std::filesystem::exists(temp_file_path))
+    {
+	std::ifstream temp_file(temp_file_path);
+	std::string allocator_name, fit_mode;
+	std::getline(temp_file, allocator_name);
+	std::getline(temp_file, fit_mode);
+	temp_file.close();
+	allocator *alc;
+	allocator_with_fit_mode::fit_mode mode = allocator_with_fit_mode::fit_mode::first_fit;
+
+	if (fit_mode == "the_best_fit")
+	{
+	    mode = allocator_with_fit_mode::fit_mode::the_best_fit;
+	}
+	else if (fit_mode == "the_worst_fit")
+	{
+	    mode = allocator_with_fit_mode::fit_mode::the_worst_fit;
+	}
+
+	if (allocator_name == "allocator_boundary_tags")
+	{
+	    alc = new allocator_boundary_tags(100'000, nullptr, nullptr, mode);
+	}
+	else
+	{
+	    alc = nullptr;
+	}
+
+	this->set_allocator(alc);
+    }
 
     for (auto &pool_entry: std::filesystem::directory_iterator(db_storage_path))
     {
@@ -475,7 +529,7 @@ void data_base::load_data_base_state()
 	    continue;
 	}
 
-	auto pool_path = pool_entry.path();
+	const auto &pool_path = pool_entry.path();
 	std::cout << "Loading pool: " << pool_path << std::endl;
 	schemas_pool pool;
 	for (auto &schema_entry: std::filesystem::directory_iterator(pool_entry))
@@ -499,6 +553,7 @@ void data_base::load_data_base_state()
 		std::cout << "Found table: " << table_path << std::endl;
 
 		std::cout << "Path to table file: " << table_entry.path() << std::endl;
+
 		table tbl = table::load_data_from_filesystem(table_path.string());
 		auto tbl_name = table_path.filename().string();
 		for (int i = 0; i < _file_format.length(); ++i)
@@ -508,6 +563,7 @@ void data_base::load_data_base_state()
 
 		schm.insert(tbl_name, std::move(tbl));
 	    }
+
 	    pool.insert(schema_path.filename().string(), schm);
 	}
 	_data->insert(pool_path.filename().string(), pool);
@@ -520,6 +576,16 @@ void data_base::save_data_base_state()
     if (get_strategy() != storage_strategy::in_memory)
     {
 	throw std::logic_error("Invalid strategy for this operation");
+    }
+    std::lock_guard<std::mutex> lock(_mtx);
+
+    if (_allocator)
+    {
+	std::ofstream temp_file(_instance_path / ("meta.txt"));
+	throw_if_not_open(temp_file);
+	temp_file << _allocator->get_typename() << std::endl;
+	temp_file << _allocator->get_fit_mode_str() << std::endl;
+	temp_file.close();
     }
 
     auto it = _data->begin_infix();
@@ -568,6 +634,8 @@ std::map<std::string, user_data> data_base::obtain_between_data(const std::strin
     throw_if_key_invalid(table_name);
     throw_if_key_invalid(lower_bound);
     throw_if_key_invalid(upper_bound);
+
+    std::lock_guard<std::mutex> lock(_mtx);
 
     switch (this->get_strategy())
     {
@@ -1203,7 +1271,8 @@ void data_base::start_console_dialog()
     {
 	std::cout << "Input operation from list: \n[1] insert_pool; [2] insert_schema; [3] insert_table \n[4] dispose_pool; "
 		  << "[5] dispose_schema; [6] dispose_table \n[7] insert_data; [8] dispose_data; [9] obtain_data\n[10] obtain_between_data "
-		  << "[11] update_data [12] exit\n[13] execute_file_command\n[14] save_db_state\n[15] load_db_state\n[16] obtain_all\n(Please, input only text command)\n" << std::endl;
+		  << "[11] update_data [12] exit\n[13] execute_file_command\n[14] save_db_state\n[15] load_db_state\n[16] obtain_all\n(Please, input only text command)\n"
+		  << std::endl;
 
 	std::cin >> command;
 	if (command.empty())
@@ -1236,7 +1305,8 @@ void data_base::start_console_dialog()
 	    {
 		schemas_pool pool;
 		insert_schemas_pool(pool_name, std::move(pool));
-		std::cout << "\nSchema pool added successfully.\n" << std::endl;
+		std::cout << "\nSchema pool added successfully.\n"
+			  << std::endl;
 	    }
 	    catch (const std::exception &e)
 	    {
@@ -1254,7 +1324,8 @@ void data_base::start_console_dialog()
 	    {
 		schema schm;
 		insert_schema(pool_name, schema_name, std::move(schm));
-		std::cout << "\nSchema added successfully.\n" << std::endl;
+		std::cout << "\nSchema added successfully.\n"
+			  << std::endl;
 	    }
 	    catch (const std::exception &e)
 	    {
@@ -1269,7 +1340,8 @@ void data_base::start_console_dialog()
 	    {
 		table tbl;
 		insert_table(pool_name, schema_name, table_name, std::move(tbl));
-		std::cout << "\nTable added successfully.\n" << std::endl;
+		std::cout << "\nTable added successfully.\n"
+			  << std::endl;
 	    }
 	    catch (const std::exception &e)
 	    {
@@ -1284,7 +1356,8 @@ void data_base::start_console_dialog()
 	    try
 	    {
 		dispose_schemas_pool(pool);
-		std::cout << "\nSchema pool removed successfully.\n" << std::endl;
+		std::cout << "\nSchema pool removed successfully.\n"
+			  << std::endl;
 	    }
 	    catch (const std::exception &e)
 	    {
@@ -1302,7 +1375,8 @@ void data_base::start_console_dialog()
 	    {
 		user_data ud(std::stol(str_id), str_name, str_surname);
 		insert_data(pool_name, schema_name, table_name, user_data_key, std::move(ud));
-		std::cout << "\nData has been successfully added.\n" << std::endl;
+		std::cout << "\nData has been successfully added.\n"
+			  << std::endl;
 	    }
 	    catch (const std::exception &e)
 	    {
@@ -1311,6 +1385,11 @@ void data_base::start_console_dialog()
 	}
 	else if (action == "obtain_all")
 	{
+	    if (this->get_strategy() != storage_strategy::filesystem)
+	    {
+		std::cerr << "Incorrect strategy for this operation" << std::endl;
+		continue;
+	    }
 	    std::string pool_name, schema_name, table_name;
 	    read_path_to_table(pool_name, schema_name, table_name);
 	    try
@@ -1345,7 +1424,6 @@ void data_base::start_console_dialog()
 	    {
 		std::cerr << "Error obtaining all data: " << e.what() << std::endl;
 	    }
-
 	}
 	else if (action == "obtain_data")
 	{
@@ -1473,7 +1551,8 @@ void data_base::start_console_dialog()
 	    try
 	    {
 		save_data_base_state();
-		std::cout << "\nData base state saved successfully.\n" << std::endl;
+		std::cout << "\nData base state saved successfully.\n"
+			  << std::endl;
 	    }
 	    catch (std::exception const &e)
 	    {
@@ -1485,7 +1564,8 @@ void data_base::start_console_dialog()
 	    try
 	    {
 		load_data_base_state();
-		std::cout << "\nData base state load successfully.\n" << std::endl;
+		std::cout << "\nData base state load successfully.\n"
+			  << std::endl;
 	    }
 	    catch (std::exception const &e)
 	    {
@@ -1500,7 +1580,8 @@ void data_base::start_console_dialog()
 	    try
 	    {
 		this->execute_command_from_file(filename);
-		std::cout << "\nOperation finished successfully\n" << std::endl;
+		std::cout << "\nOperation finished successfully\n"
+			  << std::endl;
 	    }
 	    catch (std::exception const &e)
 	    {
