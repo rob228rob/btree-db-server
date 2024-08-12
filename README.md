@@ -1,34 +1,29 @@
-Course project on computer operating systems and
-architecture
-"Development of algorithms for data storage and management
-based on dynamic data structures"
 
-To run this code, use:
+# Course Project: Data Storage and Management Algorithms
 
-```
+## Overview
+
+This project focuses on developing algorithms for data storage and management using dynamic data structures in C++. The main objectives were strict adherence to C++17 standards and the creation of a flexible, modular program architecture. These priorities were critical in ensuring the code's stability, reliability, and portability across different platforms.
+
+## Features
+
+- **Modular Architecture**: The project is built around a clear separation of concerns, enhancing code reusability and ease of testing.
+- **Abstract Interface**: The `storage_interface` was designed as an abstract interface using associative B-tree containers to manage data efficiently.
+- **Storage Strategies**: Implemented `storage_strategy` class to handle data in both RAM and file system, ensuring flexibility and modularity in data management.
+- **Efficient Memory Management**: The `user_data` class handles user information with a focus on efficient memory usage, leveraging a string pool to manage string data and prevent memory leaks.
+- **Interactive Console Interface**: A user-friendly console interface supports both interactive command entry and script execution from files, improving usability and simplifying operation.
+
+## Installation and Usage
+
+To build and run the project:
+
+```sh
 mkdir build
+cd build
 cmake ..
 ./cw_os
 ```
 
-Results:
-  
-  During the course of the course project on developing an application in the C++ programming language for managing data collections, the main focus was on strict compliance with the standards of the C++17 language and building a flexible and modular program architecture. 
+## Results
 
-This aspect has proven to be critically important for ensuring the stability, reliability and portability of code on various platforms.
-A key element of the work was the creation of an abstract storage_interface interface that uses associative B-tree containers to organize data. 
-
-This approach was chosen based on the analysis of modern data processing and management methods presented in the C++ documentation. As part of this interface, the storage_strategy class was implemented, designed to work with data in RAM and on the file system, respectively. 
-
-This approach provided a clear separation of the logic of working with different types of storage, which significantly increased the modularity and reusability of the code, as well as simplified its testing and debugging.
-
-The user_data class has become one of the central components of the system, responsible for storing user information. 
-In this implementation, special attention was paid to proper memory management and efficient handling of string data through the use of a string pool. 
-
-The class provides a complete set of methods for manipulating data, including constructors, assignment operators, and specialized methods for creating objects from string data. 
-
-This functionality allowed us to ensure high performance and minimize the likelihood of memory leaks.
-An essential part of the work was to ensure effective user interaction with the application. 
-
-To do this, a user-friendly console interface has been implemented, which allows you to enter commands interactively, as well as execute predefined scripts by reading commands from files. 
-This approach has significantly improved the usability of the program and simplified the process of its configuration and operation.
+The project successfully demonstrated the importance of adhering to C++17 standards and modular design in developing robust and portable applications. The implementation of an abstract interface and clear separation of storage strategies significantly enhanced the system's modularity and reusability. The focus on efficient memory management and a user-friendly interface contributed to the overall performance and usability of the application.
