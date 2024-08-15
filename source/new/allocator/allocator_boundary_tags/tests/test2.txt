@@ -1,0 +1,17 @@
+DEBUG Global META was defined 19:27:52
+DEBUG void * allocate STARTED 19:27:52
+DEBUG block meta was defined; 
+ALLOCATED block size: 1000
+allocated_BLOCK_size = 1032 19:27:52
+DEBUG void * allocate STARTED 19:27:52
+DEBUG iteration; fit_mode: first-fit 19:27:52
+DEBUG size SETTED: [ 0 ] 19:27:52
+DEBUG deallocate ENDED( implemented yet) 19:27:52
+DEBUG void * allocate STARTED 19:27:52
+DEBUG get_blocks_info STARTED 19:27:52
+DEBUG first block size: [999] 19:27:52
+DEBUG OCCUPIED; blok size: [999 ] 19:27:52
+DEBUG OCCUPIED; blok size: [0 ] 19:27:52
+DEBUG get_blocks_info ENDED 19:27:52
+DEBUG deallocate ENDED( implemented yet) 19:27:52
+DEBUG deallocate ENDED( implemented yet) 19:27:52
