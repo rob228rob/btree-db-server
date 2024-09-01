@@ -1,10 +1,10 @@
 ## ⚠️ Warning
 
-<span style="color: red; font-weight: bold;">
-This project is not intended for blatant copying or theft. Please respect the intellectual property and effort invested in this work. For support or inquiries regarding the project, please contact @rob229rob on Telegram.
-</span>
+**This project is not intended for blatant copying or theft. Please respect the intellectual property and effort invested in this work. For support or inquiries regarding the project, please contact @rob229rob on Telegram.**
 
 
+
+   
 # Course Project: Data Storage and Management Algorithms
 
 ## Overview
