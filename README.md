@@ -1,3 +1,4 @@
+# <div style="color: red; font-weight: bold;"> **Warning:** This project is not intended for blatant copying or theft. Please respect the intellectual property and effort invested in this work. </div>
 
 # Course Project: Data Storage and Management Algorithms
 
