@@ -1,6 +1,6 @@
 ## ⚠️ Warning
 
-<span class="warning-text">
+<span class="warning-text", color="red">
 This project is not intended for blatant copying or theft. Please respect the intellectual property and effort invested in this work. For support or inquiries regarding the project, please contact @rob229rob on Telegram.
 </span>
 
