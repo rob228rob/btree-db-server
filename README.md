@@ -2,11 +2,6 @@
 
 **This project is not intended for copying or theft. Please respect the intellectual property and effort invested in this work. For support or inquiries regarding the project, please contact @rob229rob on Telegram.**
 
-
-
-   
-# Course Project: Data Storage and Management Algorithms
-
 ## Overview
 
 This project focuses on developing algorithms for data storage and management using dynamic data structures in C++. The main objectives were strict adherence to C++17 standards and the creation of a flexible, modular program architecture. These priorities were critical in ensuring the code's stability, reliability, and portability across different platforms.
